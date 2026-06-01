@@ -16,11 +16,10 @@ import axios from "axios";
 import SecureStorage from "../utils/secureStorage";
 
 // إعداد Base URL للـ API
-// Since we are using a proxy in package.json to avoid CORS issues in development, 
-// the baseURL should just be empty (relative) in development, and the full domain in production.
-export const API_BASE_URL = process.env.NODE_ENV === 'development'
-  ? ""
-  : (process.env.REACT_APP_API_BASE_URL || "https://mushrf.net");
+// In both development and production, we use relative URLs (/api/...)
+// Development: CRA proxy (package.json) forwards to https://mushrf.net
+// Production: Vercel rewrites (vercel.json) forward to https://mushrf.net
+export const API_BASE_URL = "";
 
 // إعدادات إضافية من البيئة
 export const API_CONFIG = {
