@@ -231,8 +231,17 @@ axios.interceptors.response.use(
     // التحقق مما إذا كان الخطأ مرتبطًا بانتهاء صلاحية رمز المصادقة
     if (error.response && error.response.status === 401) {
       // حذف الرمز وإعادة توجيه المستخدم إلى صفحة تسجيل الدخول
-      SecureStorage.removeItem('token');
-      window.location.href = '/login';
+      try {
+        SecureStorage.removeItem('token');
+      } catch (e) {
+        console.error(e);
+      }
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+      localStorage.removeItem('accessToken');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

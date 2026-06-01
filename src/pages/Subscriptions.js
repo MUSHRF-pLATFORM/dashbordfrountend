@@ -108,11 +108,12 @@ const Subscriptions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedSubscription, setSelectedSubscription] = useState(null);
+  const [allFetchedSubscriptions, setAllFetchedSubscriptions] = useState([]);
 
   // State للبحث والفلترة
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [sortBy, setSortBy] = useState('SubscriptionEndDate');
+  const [sortBy, setSortBy] = useState('endDate');
   const [sortOrder, setSortOrder] = useState('ASC');
 
   // State للـ pagination
@@ -138,6 +139,7 @@ const Subscriptions = () => {
     message: '',
     severity: 'success'
   });
+  const [pendingSearchQuery, setPendingSearchQuery] = useState('');
 
   // State للتقارير
   const [reportType, setReportType] = useState(1); // 1 = نشطة, 2 = الكل
@@ -256,58 +258,61 @@ const Subscriptions = () => {
         };
       });
 
-      // تطبيق البحث
-      let filtered = mapped;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        filtered = filtered.filter(sub => 
-          sub.companyName.toLowerCase().includes(q) ||
-          sub.planName.toLowerCase().includes(q) ||
-          sub.city.toLowerCase().includes(q) ||
-          (sub.registrationNumber && sub.registrationNumber.toLowerCase().includes(q))
-        );
-      }
-
-      if (filterStatus && filterStatus !== 'all') {
-        filtered = filtered.filter(sub => sub.status === filterStatus);
-      }
-
-      if (sortBy) {
-        filtered.sort((a, b) => {
-          let valA = a[sortBy];
-          let valB = b[sortBy];
-          
-          if (sortBy === 'endDate' || sortBy === 'startDate') {
-            valA = new Date(valA || 0).getTime();
-            valB = new Date(valB || 0).getTime();
-          }
-
-          if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
-          if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
-          return 0;
-        });
-      }
-
-      setTotalItems(filtered.length);
-      const totalP = Math.ceil(filtered.length / itemsPerPage) || 1;
-      setTotalPages(totalP);
-
-      const safePage = currentPage > totalP ? (totalP === 0 ? 1 : totalP) : currentPage;
-      const startIndex = (safePage - 1) * itemsPerPage;
-      const paginated = filtered.slice(startIndex, startIndex + itemsPerPage);
-
-      setSubscriptions(paginated);
+      setAllFetchedSubscriptions(mapped);
 
     } catch (err) {
       console.error('❌ Error fetching active subscriptions progressively:', err);
       setError(err.message || 'Error fetching subscriptions');
-      setSubscriptions([]);
-      setTotalItems(0);
-      setTotalPages(0);
+      setAllFetchedSubscriptions([]);
     } finally {
       setLoading(false);
     }
   };
+
+  // Local filtering and pagination effect
+  useEffect(() => {
+    let filtered = [...allFetchedSubscriptions];
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(sub => 
+        sub.companyName.toLowerCase().includes(q) ||
+        sub.planName.toLowerCase().includes(q) ||
+        sub.city.toLowerCase().includes(q) ||
+        (sub.registrationNumber && sub.registrationNumber.toLowerCase().includes(q))
+      );
+    }
+
+    if (filterStatus && filterStatus !== 'all') {
+      filtered = filtered.filter(sub => sub.status === filterStatus);
+    }
+
+    if (sortBy) {
+      filtered.sort((a, b) => {
+        let valA = a[sortBy];
+        let valB = b[sortBy];
+        
+        if (sortBy === 'endDate' || sortBy === 'startDate') {
+          valA = new Date(valA || 0).getTime();
+          valB = new Date(valB || 0).getTime();
+        }
+
+        if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    setTotalItems(filtered.length);
+    const totalP = Math.ceil(filtered.length / itemsPerPage) || 1;
+    setTotalPages(totalP);
+
+    const safePage = currentPage > totalP ? (totalP === 0 ? 1 : totalP) : currentPage;
+    const startIndex = (safePage - 1) * itemsPerPage;
+    const paginated = filtered.slice(startIndex, startIndex + itemsPerPage);
+
+    setSubscriptions(paginated);
+  }, [allFetchedSubscriptions, searchQuery, filterStatus, sortBy, sortOrder, currentPage, itemsPerPage]);
 
   // جلب الإحصائيات باستخدام API الجديد المفعل
   const fetchStats = async () => {
@@ -699,7 +704,7 @@ const Subscriptions = () => {
     loadSubscriptionTypes();
     loadAllCompaniesForMapping();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, itemsPerPage, searchQuery, filterStatus, sortBy, sortOrder]);
+  }, []);
 
   // جلب التقرير بناءً على النوع بمجرد التغيير
   useEffect(() => {
@@ -840,7 +845,7 @@ const Subscriptions = () => {
   };
 
   // مكون عرض الإحصائيات
-  const StatsCards = () => (
+  const statsCardsContent = (
     <Grid container spacing={3} sx={{ mb: 3 }}>
       <Grid item xs={12} sm={6} md={2}>
         <Card>
@@ -953,12 +958,9 @@ const Subscriptions = () => {
   );
 
   // مكون البحث والفلترة
-  const SearchAndFilter = () => (
+  const searchAndFilterContent = (
     <Card sx={{ mb: 3 }}>
       <CardContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
-          📄 البحث والفلترة يطبق على جميع البيانات، مع عرض {itemsPerPage} عنصر في كل صفحة
-        </Typography>
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} md={4}>
             <TextField
@@ -1000,9 +1002,9 @@ const Subscriptions = () => {
                 onChange={(e) => setSortBy(e.target.value)}
                 label="الترتيب"
               >
-                <MenuItem value="NameCompany">اسم الشركة</MenuItem>
-                <MenuItem value="SubscriptionEndDate">تاريخ الانتهاء</MenuItem>
-                <MenuItem value="Cost">المبلغ</MenuItem>
+                <MenuItem value="companyName">اسم الشركة</MenuItem>
+                <MenuItem value="endDate">تاريخ الانتهاء</MenuItem>
+                <MenuItem value="amount">المبلغ</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -1018,27 +1020,6 @@ const Subscriptions = () => {
             </Button>
           </Grid>
 
-          <Grid item xs={12} md={2}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '56px' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CircularProgress
-                  size={20}
-                  sx={{
-                    color: isAutoRefreshing ? 'success.main' : 'action.disabled',
-                    animation: isAutoRefreshing ? 'pulse 1s infinite' : 'none',
-                    '@keyframes pulse': {
-                      '0%': { opacity: 1 },
-                      '50%': { opacity: 0.5 },
-                      '100%': { opacity: 1 }
-                    }
-                  }}
-                />
-                <Typography variant="body2" color="text.secondary">
-                  تحديث تلقائي
-                </Typography>
-              </Box>
-            </Box>
-          </Grid>
         </Grid>
       </CardContent>
     </Card>
@@ -1056,23 +1037,6 @@ const Subscriptions = () => {
           >
             إدارة الاشتراكات
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <CircularProgress
-              size={20}
-              sx={{
-                color: isAutoRefreshing ? 'success.main' : 'action.disabled',
-                animation: isAutoRefreshing ? 'pulse 1s infinite' : 'none',
-                '@keyframes pulse': {
-                  '0%': { opacity: 1 },
-                  '50%': { opacity: 0.5 },
-                  '100%': { opacity: 1 }
-                }
-              }}
-            />
-            <Typography variant="body2" color="text.secondary">
-              تحديث تلقائي (30 ثانية)
-            </Typography>
-          </Box>
         </Box>
         <Typography
           variant="body1"
@@ -1091,10 +1055,7 @@ const Subscriptions = () => {
       </Box>
 
       {/* الإحصائيات */}
-      <StatsCards />
-
-      {/* البحث والفلترة */}
-      <SearchAndFilter />
+      {statsCardsContent}
 
       {/* التبويبات */}
       <Card sx={{ mb: 3 }}>
@@ -1195,6 +1156,8 @@ const Subscriptions = () => {
           </Box>
         </CardContent>
       </Card>
+
+      {activeTab === 0 && searchAndFilterContent}
 
       {/* المحتوى حسب التبويب */}
       <Card>
@@ -1369,9 +1332,25 @@ const Subscriptions = () => {
           {/* التبويب الثاني: طلبات الاشتراك المعلقة */}
           {activeTab === 1 && (
             <>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
-                طلبات الاشتراك المعلقة ({pendingRequests?.length || 0})
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                  طلبات الاشتراك المعلقة ({pendingRequests?.length || 0})
+                </Typography>
+                <TextField
+                  size="small"
+                  label="البحث في الطلبات (اسم الشركة، الهاتف، البريد)..."
+                  value={pendingSearchQuery}
+                  onChange={(e) => setPendingSearchQuery(e.target.value)}
+                  sx={{ width: { xs: '100%', sm: 300 } }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
               <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
                 <Table size="small" sx={{ minWidth: 900 }}>
                   <TableHead>
@@ -1401,7 +1380,17 @@ const Subscriptions = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      pendingRequests.map((request) => (
+                      pendingRequests
+                        .filter(request => {
+                          if (!pendingSearchQuery) return true;
+                          const q = pendingSearchQuery.toLowerCase();
+                          return (
+                            (request.companyName && request.companyName.toLowerCase().includes(q)) ||
+                            (request.contactEmail && request.contactEmail.toLowerCase().includes(q)) ||
+                            (request.contactPhone && request.contactPhone.toLowerCase().includes(q))
+                          );
+                        })
+                        .map((request) => (
                         <TableRow key={request.id}>
                           <TableCell>
                             <Box>

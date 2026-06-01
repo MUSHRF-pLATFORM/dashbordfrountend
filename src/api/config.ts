@@ -184,10 +184,14 @@ apiClient.interceptors.response.use(
       console.warn('🔒 Authentication failed - clearing user data');
 
       // حذف بيانات المستخدم من جميع الأماكن
-      // localStorage.removeItem("user");
-      // localStorage.removeItem("token");
-      // localStorage.removeItem("accessToken");
-      // SecureStorage.removeItem("token");
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      localStorage.removeItem("accessToken");
+      try {
+        SecureStorage.removeItem("token");
+      } catch (e) {
+        console.error(e);
+      }
 
       // إعادة توجيه إلى صفحة تسجيل الدخول
       if (window.location.pathname !== '/login') {

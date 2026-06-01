@@ -343,14 +343,7 @@ const LoginActivity = () => {
     });
   };
 
-  // تحديث تلقائي كل 25 ثانية
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refreshData();
-    }, 25000);
 
-    return () => clearInterval(interval);
-  }, []);
 
   // البيانات للصفحة الحالية (معروضة من pagination)
   const currentActivities = loginActivities;
@@ -438,23 +431,6 @@ const LoginActivity = () => {
           <Typography variant="h4" sx={{ fontWeight: 'bold', color: theme.palette.primary.main }}>
             أنشطة تسجيل الدخول
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <CircularProgress
-              size={20}
-              sx={{
-                color: isAutoRefreshing ? 'success.main' : 'action.disabled',
-                animation: isAutoRefreshing ? 'pulse 1s infinite' : 'none',
-                '@keyframes pulse': {
-                  '0%': { opacity: 1 },
-                  '50%': { opacity: 0.5 },
-                  '100%': { opacity: 1 }
-                }
-              }}
-            />
-            <Typography variant="body2" color="text.secondary">
-              تحديث تلقائي (25 ثانية)
-            </Typography>
-          </Box>
         </Box>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 1 }}>
           إدارة ومراقبة أنشطة تسجيل الدخول وأكواد التحقق للمستخدمين
@@ -565,28 +541,7 @@ const LoginActivity = () => {
                     البحث بالكود
                   </Button>
                 </Grid>
-                <Grid item xs={12} md={2}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '56px' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CircularProgress
-                        size={20}
-                        sx={{
-                          color: isAutoRefreshing ? 'success.main' : 'action.disabled',
-                          animation: isAutoRefreshing ? 'pulse 1s infinite' : 'none',
-                          '@keyframes pulse': {
-                            '0%': { opacity: 1 },
-                            '50%': { opacity: 0.5 },
-                            '100%': { opacity: 1 }
-                          }
-                        }}
-                      />
-                      <Typography variant="body2" color="text.secondary">
-                        تحديث تلقائي
-                      </Typography>
-                    </Box>
-                  </Box>
                 </Grid>
-              </Grid>
 
               <Box sx={{ mt: 1, textAlign: 'right' }}>
                 <Typography variant="body2" color="text.secondary">

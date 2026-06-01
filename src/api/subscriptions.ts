@@ -128,9 +128,15 @@ export const fetchSubscriptionStats = async (): Promise<{ success: boolean; data
     let totalRevenue = 0;
 
     allSubs.forEach((sub: any) => {
-      const price = parseFloat(sub.price) || 0;
-      const vat = parseFloat(sub.vat) || 0;
-      totalRevenue += price + vat;
+      // الباقة الحقيقية التي تم دفعها يجب أن تحتوي على رقم حوالة (tran_ref)
+      const hasTranRef = sub.tran_ref && String(sub.tran_ref).trim() !== '' && String(sub.tran_ref) !== '0' && String(sub.tran_ref).toLowerCase() !== 'null';
+
+      // فقط إضافة الباقات المدفوعة فعلياً والتي لها حوالة مالية
+      if (sub.type === 'paid' && hasTranRef) {
+        const price = parseFloat(sub.price) || 0;
+        const vat = parseFloat(sub.vat) || 0;
+        totalRevenue += price + vat;
+      }
 
       if (sub.status === 'active') {
         activeCount++;

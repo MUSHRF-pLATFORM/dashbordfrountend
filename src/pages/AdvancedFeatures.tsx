@@ -117,6 +117,7 @@ function TabPanel(props: TabPanelProps) {
 const AdvancedFeatures: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Data states
@@ -433,15 +434,15 @@ const AdvancedFeatures: React.FC = () => {
   };
 
   // بناء HTML للطباعة (يعتمد على متصفح النظام لطباعة PDF بدعم عربي صحيح)
-  const buildPrintableHtml = () => {
+  const buildPrintableHtml = (dataToExport: any[]) => {
     const title = getTabName();
-    const data = getCurrentTabData();
+    const data = dataToExport;
     const printDate = new Date().toLocaleString('ar-SA');
 
     // رؤوس الأعمدة حسب التبويب
     let headers: string[] = [];
     let rowsHtml = '';
-    const num = (i: number) => (page - 1) * itemsPerPage + i + 1;
+    const num = (i: number) => i + 1;
 
     if (activeTab === 0) {
       headers = ['م', 'رقم الشركة', 'اسم الشركة', 'المدينة', 'الدولة', 'السجل', 'الفروع المسموحة', 'بداية الاشتراك', 'نهاية الاشتراك'];
@@ -533,13 +534,24 @@ const AdvancedFeatures: React.FC = () => {
     </html>`;
   };
 
-  const printToPDF = () => {
-    const html = buildPrintableHtml();
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
+  const printToPDF = async () => {
+    if (isExporting) return;
+    try {
+      const dataToExport = await getAllExportData();
+      if (dataToExport.length === 0) {
+        alert('لا توجد بيانات للتصدير');
+        return;
+      }
+      const html = buildPrintableHtml(dataToExport);
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+      }
+    } catch (error) {
+      console.error('خطأ في تصدير PDF:', error);
+      alert('حدث خطأ في تصدير ملف PDF');
     }
   };
   // ملاحظة: سنعتمد على الخط والمحاذاة فقط بدون إدراج علامات RTL
@@ -858,11 +870,72 @@ const AdvancedFeatures: React.FC = () => {
   // عند تغيير الصفحة في وضع البحث، نجلب الصفحة المطلوبة فوراً
   // ملاحظة: لا نحتاج تأثير منفصل عند تغيير الصفحة لأن loadData يتكفّل بذلك
 
-  // Export to Excel function
-  const exportToExcel = () => {
+  // دالة لجلب كافة البيانات للتصدير
+  const getAllExportData = async () => {
     try {
-      const currentData = getCurrentTabData();
-      if (currentData.length === 0) {
+      setIsExporting(true);
+      if (activeTab === 0) {
+        if (allCompaniesCache.length === 0) {
+          await loadAllCompanies();
+        }
+        if (companySearchTerm && companySearchTerm.trim().length >= 2) {
+          const term = companySearchTerm.trim().toLowerCase();
+          return allCompaniesCache.filter((c: any) => {
+            const name = String(c?.name || '').toLowerCase();
+            const city = String(c?.city || '').toLowerCase();
+            const reg = String(c?.registrationNumber || '').toLowerCase();
+            const id = String(c?.id || '').toLowerCase();
+            return name.includes(term) || city.includes(term) || reg.includes(term) || id.includes(term);
+          });
+        }
+        return allCompaniesCache;
+      } else if (activeTab === 1) {
+        const result = await fetchSubscriptions({ page: 1, limit: 10000 });
+        return result.data || [];
+      } else if (activeTab === 2) {
+        if (!selectedCompanyId) return [];
+        let allEmps: any[] = [];
+        let lastId = 0;
+        let hasMore = true;
+        let iters = 0;
+        while (hasMore && iters < 100) {
+          iters++;
+          const res = await fetchCompanyEmployees(String(selectedCompanyId), { lastId, limit: 100 });
+          const emps = res.employees || [];
+          if (emps.length === 0) break;
+          allEmps = [...allEmps, ...emps];
+          const maxId = emps.reduce((m: number, e: any) => Math.max(m, Number(e.id) || 0), lastId);
+          if (maxId <= lastId || emps.length < 100) hasMore = false;
+          lastId = maxId;
+        }
+        if (isEmployeeSearchMode && employeeSearchTerm.trim()) {
+           const term = employeeSearchTerm.trim().toLowerCase();
+           const termDigits = term.replace(/[^0-9]/g, '');
+           return allEmps.filter((e: any) => {
+              const name = String(e?.userName || '').toLowerCase();
+              const rawPhone = String(e?.PhoneNumber ?? '');
+              const phoneDigits = rawPhone.replace(/[^0-9]/g, '');
+              const phoneMatches = termDigits ? phoneDigits.includes(termDigits) : rawPhone.includes(term);
+              return name.includes(term) || phoneMatches;
+           });
+        }
+        return allEmps;
+      }
+      return [];
+    } catch (e) {
+      console.error('Error fetching all data for export:', e);
+      return [];
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Export to Excel function
+  const exportToExcel = async () => {
+    if (isExporting) return;
+    try {
+      const dataToExport = await getAllExportData();
+      if (dataToExport.length === 0) {
         alert('لا توجد بيانات للتصدير');
         return;
       }
@@ -874,8 +947,8 @@ const AdvancedFeatures: React.FC = () => {
       switch (activeTab) {
         case 0: // Companies Data
           headers = ['م', 'رقم الشركة', 'اسم الشركة', 'المدينة', 'البلد', 'السجل التجاري', 'عدد الفروع المسموحة', 'تاريخ بداية الاشتراك', 'تاريخ انتهاء الاشتراك'];
-          worksheetData = currentData.map((item: any, idx: number) => [
-            getRowNumber(idx),
+          worksheetData = dataToExport.map((item: any, idx: number) => [
+            idx + 1,
             safeText(item.id),
             safeText(item.name),
             safeText(item.city),
@@ -888,8 +961,8 @@ const AdvancedFeatures: React.FC = () => {
           break;
         case 1: // Subscriptions
           headers = ['م', 'رقم الشركة', 'اسم الشركة', 'الباقة', 'المبلغ', 'تاريخ البداية', 'تاريخ الانتهاء', 'الحالة'];
-          worksheetData = currentData.map((item: any, idx: number) => [
-            getRowNumber(idx),
+          worksheetData = dataToExport.map((item: any, idx: number) => [
+            idx + 1,
             safeText(item.companyId || item.id),
             safeText(item.companyName),
             safeText(item.planName),
@@ -901,8 +974,8 @@ const AdvancedFeatures: React.FC = () => {
           break;
         case 2: // Company Employees (tab 3 was removed)
           headers = ['م', 'المعرف', 'الاسم', 'الوظيفة', 'القسم', 'الهاتف', 'الحالة'];
-          worksheetData = currentData.map((item: any, idx: number) => [
-            getRowNumber(idx),
+          worksheetData = dataToExport.map((item: any, idx: number) => [
+            idx + 1,
             safeText(item.id),
             safeText(item.userName),
             safeText(item.job),
@@ -950,11 +1023,12 @@ const AdvancedFeatures: React.FC = () => {
 
   // Export to PDF function with Arabic support
   const exportToPDF = async () => {
+    if (isExporting) return;
     try {
       // Ensure Arabic fonts loaded
       await loadArabicFont();
-      const currentData = getCurrentTabData();
-      if (currentData.length === 0) {
+      const dataToExport = await getAllExportData();
+      if (dataToExport.length === 0) {
         alert('لا توجد بيانات للتصدير');
         return;
       }
@@ -999,7 +1073,7 @@ const AdvancedFeatures: React.FC = () => {
             // Footer summary
             const finalY = 190; // approximate
             d.setFontSize(10);
-            d.text(`إجمالي السجلات المصدّرة: ${currentData.length}`, 10, finalY + 15);
+            d.text(`إجمالي السجلات المصدّرة: ${dataToExport.length}`, 10, finalY + 15);
             d.text(`تم التصدير في: ${new Date().toLocaleString('en-GB')}`, 10, finalY + 22);
             const fileName = `${title}_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.pdf`;
             d.save(fileName);
@@ -1015,8 +1089,8 @@ const AdvancedFeatures: React.FC = () => {
       switch (activeTab) {
         case 0: // Companies Data
           columns = ['#', 'رقم الشركة', 'اسم الشركة', 'المدينة', 'الدولة', 'السجل', 'الفروع المسموحة', 'بداية الاشتراك', 'نهاية الاشتراك'];
-          rows = currentData.map((item: any, idx: number) => [
-            getRowNumber(idx),
+          rows = dataToExport.map((item: any, idx: number) => [
+            idx + 1,
             safeText(item.id),
             safeText(item.name, 20),
             safeText(item.city, 12),
@@ -1029,8 +1103,8 @@ const AdvancedFeatures: React.FC = () => {
           break;
         case 1: // Subscriptions
           columns = ['#', 'رقم الشركة', 'اسم الشركة', 'الباقة', 'المبلغ', 'تاريخ البداية', 'تاريخ النهاية', 'الحالة'];
-          rows = currentData.map((item: any, idx: number) => [
-            getRowNumber(idx),
+          rows = dataToExport.map((item: any, idx: number) => [
+            idx + 1,
             safeText(item.id),
             safeText(item.companyName, 20),
             safeText(item.planName, 15),
@@ -1042,8 +1116,8 @@ const AdvancedFeatures: React.FC = () => {
           break;
         case 2: // Company Employees
           columns = ['#', 'المعرف', 'الاسم', 'الوظيفة', 'القسم', 'الهاتف', 'الحالة'];
-          rows = currentData.map((item: any, idx: number) => [
-            getRowNumber(idx),
+          rows = dataToExport.map((item: any, idx: number) => [
+            idx + 1,
             safeText(item.id),
             safeText(item.userName, 20),
             safeText(item.job, 15),
@@ -1085,7 +1159,7 @@ const AdvancedFeatures: React.FC = () => {
       // Footer summary
       const finalY = (doc as any).lastAutoTable?.finalY || 100;
       doc.setFontSize(10);
-      doc.text(`إجمالي السجلات المصدّرة: ${currentData.length}`, 10, finalY + 15);
+      doc.text(`إجمالي السجلات المصدّرة: ${dataToExport.length}`, 10, finalY + 15);
       doc.text(`تم التصدير في: ${new Date().toLocaleString('en-GB')}`, 10, finalY + 22);
 
       // Save PDF
@@ -1251,8 +1325,8 @@ const AdvancedFeatures: React.FC = () => {
                 onClick={exportToExcel}
                 variant="outlined"
                 color="success"
-                startIcon={<ExcelIcon />}
-                disabled={getCurrentTabData().length === 0 || loading}
+                startIcon={isExporting ? <CircularProgress size={16} /> : <ExcelIcon />}
+                disabled={isExporting || loading}
                 sx={{ borderRadius: 2, textTransform: 'none' }}
               >
                 Excel
@@ -1265,8 +1339,8 @@ const AdvancedFeatures: React.FC = () => {
                 onClick={printToPDF}
                 variant="outlined"
                 color="error"
-                startIcon={<PdfIcon />}
-                disabled={getCurrentTabData().length === 0 || loading}
+                startIcon={isExporting ? <CircularProgress size={16} /> : <PdfIcon />}
+                disabled={isExporting || loading}
                 sx={{ borderRadius: 2, textTransform: 'none' }}
               >
                 PDF
@@ -1287,8 +1361,8 @@ const AdvancedFeatures: React.FC = () => {
                       onClick={exportToExcel}
                       variant="outlined"
                       color="success"
-                      startIcon={<ExcelIcon />}
-                      disabled={getCurrentTabData().length === 0 || loading}
+                      startIcon={isExporting ? <CircularProgress size={16} /> : <ExcelIcon />}
+                      disabled={isExporting || loading}
                       sx={{ borderRadius: 2, textTransform: 'none' }}
                     >
                       تصدير Excel
@@ -1301,8 +1375,8 @@ const AdvancedFeatures: React.FC = () => {
                       onClick={exportToPDF}
                       variant="outlined"
                       color="error"
-                      startIcon={<PdfIcon />}
-                      disabled={getCurrentTabData().length === 0 || loading}
+                      startIcon={isExporting ? <CircularProgress size={16} /> : <PdfIcon />}
+                      disabled={isExporting || loading}
                       sx={{ borderRadius: 2, textTransform: 'none' }}
                     >
                       تصدير PDF
