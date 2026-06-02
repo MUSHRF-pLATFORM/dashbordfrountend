@@ -114,6 +114,9 @@ const LoginActivity = () => {
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityLoadError, setActivityLoadError] = useState(null);
   const [companiesData, setCompaniesData] = useState([]);
+  // فلترة سجل العمليات
+  const [activitySearchName, setActivitySearchName] = useState('');
+  const [activityFilterDate, setActivityFilterDate] = useState('');
 
   
   const loadCompanies = async () => {
@@ -857,6 +860,13 @@ const LoginActivity = () => {
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
                   سجل آخر العمليات
                 </Typography>
+                {activityLog.length > 0 && (
+                  <Chip
+                    label={`${activityLog.length} عملية`}
+                    size="small"
+                    sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 600, fontSize: '0.75rem' }}
+                  />
+                )}
               </Box>
               <Tooltip title="تحديث السجل">
                 <IconButton
@@ -873,6 +883,43 @@ const LoginActivity = () => {
             </Box>
 
             <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+              {/* فلترة بالاسم والتاريخ */}
+              <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+                <TextField
+                  size="small"
+                  label="بحث بالاسم"
+                  placeholder="اكتب اسم المستخدم..."
+                  value={activitySearchName}
+                  onChange={(e) => setActivitySearchName(e.target.value)}
+                  sx={{ minWidth: 200, flex: 1 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ fontSize: 18, color: theme.palette.text.disabled }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField
+                  size="small"
+                  label="فلترة بالتاريخ"
+                  type="date"
+                  value={activityFilterDate}
+                  onChange={(e) => setActivityFilterDate(e.target.value)}
+                  sx={{ minWidth: 180 }}
+                  InputLabelProps={{ shrink: true }}
+                />
+                {(activitySearchName || activityFilterDate) && (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => { setActivitySearchName(''); setActivityFilterDate(''); }}
+                    sx={{ color: theme.palette.error.main, fontWeight: 600, minWidth: 'auto' }}
+                  >
+                    مسح الفلاتر
+                  </Button>
+                )}
+              </Box>
               {activityLoadError && (
                 <Alert
                   severity="warning"
@@ -930,9 +977,53 @@ const LoginActivity = () => {
                     ستظهر هنا جميع العمليات عند توفر الـ API
                   </Typography>
                 </Box>
-              ) : (
+              ) : (() => {
+                const filteredLog = activityLog.filter(entry => {
+                  // فلترة بالاسم (يبحث في كل الحقول المعروضة)
+                  if (activitySearchName) {
+                    const q = activitySearchName.toLowerCase();
+                    const fields = [
+                      entry.userName,
+                      entry.PhoneNumber,
+                      entry.title,
+                      entry.description,
+                      entry.companyName,
+                      entry.details,
+                      entry.type,
+                    ];
+                    const found = fields.some(f => (f || '').toLowerCase().includes(q));
+                    if (!found) return false;
+                  }
+                  // فلترة بالتاريخ
+                  if (activityFilterDate) {
+                    const entryDate = entry.createdAt || entry.Time || '';
+                    if (!entryDate) return false;
+                    try {
+                      const entryDay = new Date(entryDate).toISOString().split('T')[0];
+                      if (entryDay !== activityFilterDate) return false;
+                    } catch { return false; }
+                  }
+                  return true;
+                });
+
+                if (filteredLog.length === 0) {
+                  return (
+                    <Box sx={{ py: 4, textAlign: 'center', color: theme.palette.text.secondary }}>
+                      <SearchIcon sx={{ fontSize: 48, mb: 1, opacity: 0.3 }} />
+                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                        لا توجد نتائج مطابقة
+                      </Typography>
+                      <Typography variant="caption">
+                        {activitySearchName ? `لا توجد عمليات تحتوي على "${activitySearchName}"` : 'لا توجد عمليات في التاريخ المحدد'}
+                      </Typography>
+                    </Box>
+                  );
+                }
+
+                return (
                 <List disablePadding>
-                  {activityLog.map((entry, index) => (
+                  {filteredLog
+                    .map((entry, index) => (
                     <React.Fragment key={entry.id}>
                       <ListItem
                         alignItems="flex-start"
@@ -1003,6 +1094,11 @@ const LoginActivity = () => {
                                     {entry.userName}
                                   </Typography>
                                 )}
+                                {entry.PhoneNumber && (
+                                  <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.3, color: theme.palette.text.secondary }}>
+                                    📱 {entry.PhoneNumber}
+                                  </Typography>
+                                )}
                                 {entry.createdAt && (
                                   <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.3, color: theme.palette.text.disabled }}>
                                     <ScheduleIcon sx={{ fontSize: 12 }} />
@@ -1020,13 +1116,14 @@ const LoginActivity = () => {
                           secondaryTypographyProps={{ component: 'div' }}
                         />
                       </ListItem>
-                      {index < activityLog.length - 1 && (
+                      {index < filteredLog.length - 1 && (
                         <Divider sx={{ opacity: 0.2, mx: 2 }} />
                       )}
                     </React.Fragment>
                   ))}
                 </List>
-              )}
+                );
+              })()}
 
               {/* زر تحميل المزيد */}
               {activityHasMore && (

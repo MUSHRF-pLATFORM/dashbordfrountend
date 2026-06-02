@@ -1529,29 +1529,43 @@ const Subscriptions = () => {
                     <Button
                       variant="outlined"
                       color="secondary"
-                      onClick={() => {
+                      onClick={async () => {
                         const code = (invoiceCodeSearch || '').trim();
                         if (!code) {
                           setNotification({ open: true, message: 'الرجاء إدخال كود الاشتراك (code_subscription)', severity: 'warning' });
                           return;
                         }
-                        // ابحث أولاً في البيانات المحملة عن partner_id
+                        // التحقق من وجود الاشتراك في البيانات المحملة
                         const foundRow = reportsData.find(r => r.code_subscription === code);
-                        if (foundRow?.partner_id) {
-                          // نبني الرابط مباشرة من partner_id بدون استدعاء الباك إند
-                          const odooUrl = `https://shafaq-acc-shafaq-25386523.dev.odoo.com/my/invoices/${foundRow.partner_id}`;
-                          window.open(odooUrl, '_blank', 'noopener,noreferrer');
-                          setNotification({ open: true, message: 'تم فتح الفاتورة في نافذة جديدة', severity: 'success' });
-                        } else if (foundRow && !foundRow.partner_id) {
+                        if (foundRow && !foundRow.partner_id) {
                           setNotification({ open: true, message: 'هذا الاشتراك لم يتم ربطه بفاتورة في النظام المالي بعد', severity: 'warning' });
-                        } else {
+                          return;
+                        }
+                        if (!foundRow) {
                           setNotification({ open: true, message: 'كود الاشتراك غير موجود في التقرير الحالي، يرجى التأكد من الكود', severity: 'error' });
+                          return;
+                        }
+                        // استدعاء الباك إند للحصول على الرابط الكامل مع access_token
+                        setInvoiceLoading(true);
+                        try {
+                          const result = await fetchInvoiceUrl(code);
+                          if (result?.url) {
+                            window.open(result.url, '_blank', 'noopener,noreferrer');
+                            setNotification({ open: true, message: 'تم فتح الفاتورة في نافذة جديدة', severity: 'success' });
+                          } else {
+                            setNotification({ open: true, message: result?.massege || 'لم يتم العثور على رابط الفاتورة', severity: 'error' });
+                          }
+                        } catch (err) {
+                          console.error('خطأ في جلب رابط الفاتورة:', err);
+                          setNotification({ open: true, message: 'فشل في جلب الفاتورة، يرجى المحاولة لاحقاً', severity: 'error' });
+                        } finally {
+                          setInvoiceLoading(false);
                         }
                       }}
-                      disabled={!(invoiceCodeSearch || '').trim()}
-                      startIcon={<ReceiptLongIcon />}
+                      disabled={!(invoiceCodeSearch || '').trim() || invoiceLoading}
+                      startIcon={invoiceLoading ? <CircularProgress size={18} /> : <ReceiptLongIcon />}
                     >
-                      عرض الفاتورة
+                      {invoiceLoading ? 'جاري التحميل...' : 'عرض الفاتورة'}
                     </Button>
                   </Box>
                   <FormControl variant="outlined" size="small" sx={{ minWidth: 200 }}>
@@ -1701,11 +1715,21 @@ const Subscriptions = () => {
                                       size="small"
                                       color={row.partner_id ? 'primary' : 'default'}
                                       disabled={!row.partner_id}
-                                      onClick={() => {
-                                        // نبني الرابط مباشرة من partner_id بدون استدعاء الباك إند
-                                        const odooUrl = `https://shafaq-acc-shafaq-25386523.dev.odoo.com/my/invoices/${row.partner_id}`;
-                                        window.open(odooUrl, '_blank', 'noopener,noreferrer');
-                                        setNotification({ open: true, message: 'تم فتح الفاتورة في نافذة جديدة', severity: 'success' });
+                                      onClick={async () => {
+                                        // استدعاء الباك إند للحصول على الرابط الكامل مع access_token
+                                        setNotification({ open: true, message: 'جاري جلب رابط الفاتورة...', severity: 'info' });
+                                        try {
+                                          const result = await fetchInvoiceUrl(row.code_subscription);
+                                          if (result?.url) {
+                                            window.open(result.url, '_blank', 'noopener,noreferrer');
+                                            setNotification({ open: true, message: 'تم فتح الفاتورة في نافذة جديدة', severity: 'success' });
+                                          } else {
+                                            setNotification({ open: true, message: result?.massege || 'لم يتم العثور على رابط الفاتورة', severity: 'error' });
+                                          }
+                                        } catch (err) {
+                                          console.error('خطأ في جلب رابط الفاتورة:', err);
+                                          setNotification({ open: true, message: 'فشل في جلب الفاتورة، يرجى المحاولة لاحقاً', severity: 'error' });
+                                        }
                                       }}
                                     >
                                       <ReceiptLongIcon />
