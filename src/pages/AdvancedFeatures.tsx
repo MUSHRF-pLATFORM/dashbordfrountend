@@ -590,7 +590,6 @@ const AdvancedFeatures: React.FC = () => {
   const getTabName = () => {
     const tabNames = [
       'بيانات الشركات',
-      'الاشتراكات',
       'مستخدمين الشركة'
     ];
     return tabNames[activeTab] || 'البيانات';
@@ -959,20 +958,7 @@ const AdvancedFeatures: React.FC = () => {
             safeText(formatDate(item.subscriptionEnd))
           ]);
           break;
-        case 1: // Subscriptions
-          headers = ['م', 'رقم الشركة', 'اسم الشركة', 'الباقة', 'المبلغ', 'تاريخ البداية', 'تاريخ الانتهاء', 'الحالة'];
-          worksheetData = dataToExport.map((item: any, idx: number) => [
-            idx + 1,
-            safeText(item.companyId || item.id),
-            safeText(item.companyName),
-            safeText(item.planName),
-            safeText(formatAmount(item.amount ?? 0)),
-            safeText(formatDate(item.startDate)),
-            safeText(formatDate(item.endDate)),
-            (() => { const raw = String(item.status || '').toLowerCase(); return raw === 'expired' ? 'منتهي' : raw === 'active' ? 'نشط' : safeText(item.status); })()
-          ]);
-          break;
-        case 2: // Company Employees (tab 3 was removed)
+        case 1: // Company Employees (tab 2 now)
           headers = ['م', 'المعرف', 'الاسم', 'الوظيفة', 'القسم', 'الهاتف', 'الحالة'];
           worksheetData = dataToExport.map((item: any, idx: number) => [
             idx + 1,
@@ -1101,20 +1087,7 @@ const AdvancedFeatures: React.FC = () => {
             safeText(formatDate(item.subscriptionEnd))
           ]);
           break;
-        case 1: // Subscriptions
-          columns = ['#', 'رقم الشركة', 'اسم الشركة', 'الباقة', 'المبلغ', 'تاريخ البداية', 'تاريخ النهاية', 'الحالة'];
-          rows = dataToExport.map((item: any, idx: number) => [
-            idx + 1,
-            safeText(item.id),
-            safeText(item.companyName, 20),
-            safeText(item.planName, 15),
-            `${item.amount || 0} SAR`,
-            safeText(formatDate(item.startDate)),
-            safeText(formatDate(item.endDate)),
-            safeText(item.status || 'نشط')
-          ]);
-          break;
-        case 2: // Company Employees
+        case 1: // Company Employees
           columns = ['#', 'المعرف', 'الاسم', 'الوظيفة', 'القسم', 'الهاتف', 'الحالة'];
           rows = dataToExport.map((item: any, idx: number) => [
             idx + 1,
@@ -1398,7 +1371,6 @@ const AdvancedFeatures: React.FC = () => {
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tabs value={activeTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
           <Tab icon={<AssignmentIcon />} label="بيانات الشركات" />
-          <Tab icon={<MoneyIcon />} label="الاشتراكات" />
           <Tab icon={<AssignmentIcon />} label="مستخدمين الشركة" />
         </Tabs>
       </Box>
@@ -1408,10 +1380,6 @@ const AdvancedFeatures: React.FC = () => {
       </TabPanel>
 
       <TabPanel value={activeTab} index={1}>
-        {loading ? <Skeleton variant="rectangular" height={400} /> : renderRevenue()}
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={2}>
         <Card sx={{ mb: 2 }}>
           <CardContent>
             <Grid container spacing={3}>

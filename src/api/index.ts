@@ -55,10 +55,12 @@ export {
 export {
   fetchDashboardStats,
   fetchDashboardReports,
+  fetchActivityLog,
   formatProjectStatus,
   formatProgress,
   formatDashboardCurrency,
   formatDashboardDate,
+  formatActivityType,
   calculatePercentage
 } from './dashboard';
 
@@ -114,7 +116,10 @@ export const API_ENDPOINTS = {
 // أنواع البيانات المُعاد تصديرها
 export type {
   DashboardStats,
-  DashboardReports
+  DashboardReports,
+  ActivityLogEntry,
+  ActivityLogPagination,
+  ActivityLogResponse
 } from './dashboard';
 
 export type {

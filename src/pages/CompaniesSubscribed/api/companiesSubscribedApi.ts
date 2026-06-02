@@ -72,6 +72,109 @@ export interface ApiResponse<T = any> {
   hasMore?: boolean;
 }
 
+// ===== Types الجديدة لنظام Cursor Pagination =====
+
+export interface CursorPagination {
+  pageSize: number;
+  nextCursor: number | null;
+  hasMore: boolean;
+}
+
+/** ملخص شركة مع إحصاءات مدمجة (GET /api/companies/summary) */
+export interface CompanySummary {
+  companyId: number;
+  companyName: string;
+  city: string;
+  country: string;
+  commercialRegistrationNumber: number;
+  subscriptionStartDate: string;
+  subscriptionEndDate: string;
+  disabledFinance: string;
+  cost: number;
+  branchesCount: number;
+  projectsCount: number;
+  usersCount: number;
+  lastActivityAt: string | null;
+}
+
+export interface CompaniesSummaryResponse {
+  success: boolean;
+  data: CompanySummary[];
+  pagination: CursorPagination;
+}
+
+/** تقرير كامل لشركة واحدة (GET /api/companies/:id/full-report) */
+export interface CompanyFullReportBranch {
+  id: number;
+  NameSub: string;
+  BranchAddress: string;
+  Email: string;
+  PhoneNumber: string;
+}
+
+export interface CompanyFullReportProject {
+  id: number;
+  Nameproject: string;
+  Note: string;
+  TypeOFContract: string;
+  LocationProject: string;
+  ProjectStartdate: string;
+  Disabled: string;
+  rate: number;
+  branchName: string;
+}
+
+export interface CompanyFullReportUser {
+  id: number;
+  userName: string;
+  PhoneNumber: string;
+  job: string;
+  jobdiscrption: string;
+  Activation: string;
+  DateOFjoin: string;
+}
+
+export interface CompanyFullReportActivity {
+  id: number;
+  movement_type: string;
+  userName: string;
+  PhoneNumber: string;
+  createdAt: string;
+}
+
+export interface CompanyFullReport {
+  company: {
+    id: number;
+    name: string;
+    city: string;
+    country: string;
+    commercialRegistrationNumber: number;
+    buildingNumber: number;
+    postalCode: string;
+    taxNumber: number;
+    numberOFbranchesAllowed: number;
+    numberOFcurrentBranches: number;
+    subscriptionStartDate: string;
+    subscriptionEndDate: string;
+    cost: number;
+    disabledFinance: string;
+  };
+  stats: {
+    branchesCount: number;
+    projectsCount: number;
+    usersCount: number;
+  };
+  branches: { data: CompanyFullReportBranch[]; pagination: CursorPagination };
+  projects: { data: CompanyFullReportProject[]; pagination: CursorPagination };
+  users: { data: CompanyFullReportUser[]; pagination: CursorPagination };
+  lastActivities: { data: CompanyFullReportActivity[]; pagination: CursorPagination };
+}
+
+export interface CompanyFullReportResponse {
+  success: boolean;
+  data: CompanyFullReport;
+}
+
 // APIs الشركات
 export const companiesSubscribedApi = {
   // جلب جميع الشركات مع pagination
@@ -2434,6 +2537,91 @@ export const companiesSubscribedApi = {
   },
 
   
+  // ===== APIs الجديدة =====
+
+  /**
+   * جلب ملخص الشركات بنظام المؤشر (Cursor Pagination)
+   * GET /api/companies/summary
+   * يجلب قائمة الشركات مع إحصاءات مدمجة في طلب واحد:
+   * branchesCount + projectsCount + usersCount + lastActivityAt
+   */
+  async getCompaniesSummary(afterId?: number): Promise<CompaniesSummaryResponse> {
+    try {
+      const params: Record<string, any> = {};
+      if (afterId !== undefined && afterId > 0) {
+        params.afterId = afterId;
+      }
+
+      const response = await apiClient.get('/companies/summary', { params });
+      const resData = response.data;
+
+      // دعم استجابات الـ backend المختلفة
+      if (resData?.success === true || resData?.success === 'true') {
+        return {
+          success: true,
+          data: resData.data || [],
+          pagination: resData.pagination || {
+            pageSize: (resData.data || []).length,
+            nextCursor: null,
+            hasMore: false,
+          },
+        };
+      }
+
+      return {
+        success: false,
+        data: [],
+        pagination: { pageSize: 0, nextCursor: null, hasMore: false },
+      };
+    } catch (error: any) {
+      console.error('خطأ في جلب ملخص الشركات:', error);
+      return {
+        success: false,
+        data: [],
+        pagination: { pageSize: 0, nextCursor: null, hasMore: false },
+      };
+    }
+  },
+
+  /**
+   * جلب تقرير كامل لشركة واحدة بمكالمة واحدة
+   * GET /api/companies/:id/full-report
+   * يشمل: تفاصيل الشركة + الإحصاءات + الفروع + المشاريع + الموظفين + آخر العمليات
+   * كل قائمة بـ Cursor Pagination مستقل
+   */
+  async getCompanyFullReport(
+    companyId: number,
+    cursors?: {
+      branchesAfterId?: number;
+      projectsAfterId?: number;
+      usersAfterId?: number;
+      activityAfterId?: number;
+    }
+  ): Promise<CompanyFullReportResponse> {
+    try {
+      const params: Record<string, any> = {};
+      if (cursors?.branchesAfterId) params.branchesAfterId = cursors.branchesAfterId;
+      if (cursors?.projectsAfterId) params.projectsAfterId = cursors.projectsAfterId;
+      if (cursors?.usersAfterId) params.usersAfterId = cursors.usersAfterId;
+      if (cursors?.activityAfterId) params.activityAfterId = cursors.activityAfterId;
+
+      const response = await apiClient.get(`/companies/${companyId}/full-report`, { params });
+      const resData = response.data;
+
+      if (resData?.success === true || resData?.success === 'true') {
+        return {
+          success: true,
+          data: resData.data,
+        };
+      }
+
+      return { success: false, data: null as any };
+    } catch (error: any) {
+      console.error(`خطأ في جلب التقرير الكامل للشركة ${companyId}:`, error);
+      return { success: false, data: null as any };
+    }
+  },
+
 };
 
 export default companiesSubscribedApi; 

@@ -48,8 +48,14 @@ import {
   ExpandLess as ExpandLessIcon,
   Group as GroupIcon,
   Work as ProjectIcon,
+  Assessment as ReportIcon,
+  Close as CloseIcon,
+  People as PeopleIcon,
+  Schedule as ScheduleIcon,
+  Visibility as VisibilityIcon,
 } from "@mui/icons-material";
 import { companiesSubscribedApi, Company } from "../api";
+import type { CompanyFullReport } from "../api";
 import apiClient from "../../../api/config";
 import { getSoftStatusChipSx } from "../../../utils/colorUtils";
 
@@ -103,6 +109,34 @@ const CompaniesView: React.FC<CompaniesViewProps> = ({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [isDialogLoading, setIsDialogLoading] = useState(false);
+
+  // State التقرير الكامل للشركة
+  const [fullReportOpen, setFullReportOpen] = useState(false);
+  const [fullReportCompany, setFullReportCompany] = useState<Company | null>(null);
+  const [fullReportData, setFullReportData] = useState<CompanyFullReport | null>(null);
+  const [fullReportLoading, setFullReportLoading] = useState(false);
+  const [fullReportError, setFullReportError] = useState<string | null>(null);
+
+  // فتح التقرير الكامل
+  const openFullReport = async (company: Company) => {
+    setFullReportCompany(company);
+    setFullReportOpen(true);
+    setFullReportData(null);
+    setFullReportError(null);
+    setFullReportLoading(true);
+    try {
+      const result = await companiesSubscribedApi.getCompanyFullReport(company.id);
+      if (result.success && result.data) {
+        setFullReportData(result.data);
+      } else {
+        setFullReportError('تعذر تحميل التقرير الكامل. تأكد من توفر الـ API في الـ Backend.');
+      }
+    } catch (e) {
+      setFullReportError('خطأ في الاتصال بالخادم.');
+    } finally {
+      setFullReportLoading(false);
+    }
+  };
 
   // إدارة إغلاق النافذة وإعادة تعيين التركيز
   const handleCloseDialog = () => {
@@ -1099,7 +1133,7 @@ const CompaniesView: React.FC<CompaniesViewProps> = ({
                     />
                   </TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       <Tooltip title="عرض التفاصيل">
                         <Button
                           size="small"
@@ -1108,6 +1142,17 @@ const CompaniesView: React.FC<CompaniesViewProps> = ({
                           onClick={() => onCompanySelect(company)}
                         >
                           التفاصيل
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="نظرة عامة ومفصلة للشركة">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="info"
+                          startIcon={<VisibilityIcon />}
+                          onClick={() => openFullReport(company)}
+                        >
+                          إلقاء نظرة
                         </Button>
                       </Tooltip>
                       <Tooltip title="تعديل">
@@ -1373,6 +1418,178 @@ const CompaniesView: React.FC<CompaniesViewProps> = ({
           <Button onClick={handleCloseDialog}>إلغاء</Button>
           <Button variant="contained" onClick={handleSaveCompany} autoFocus>
             {editingCompany ? "تحديث" : "إضافة"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ===== نافذة التقرير الكامل للشركة ===== */}
+      <Dialog
+        open={fullReportOpen}
+        onClose={() => setFullReportOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, maxHeight: '90vh' } }}
+      >
+        <DialogTitle
+          sx={{
+            background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            pb: 2,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <ReportIcon />
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+                نظرة عامة
+              </Typography>
+              {fullReportCompany && (
+                <Typography variant="caption" sx={{ opacity: 0.85 }}>
+                  {fullReportCompany.name}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+          <IconButton
+            onClick={() => setFullReportOpen(false)}
+            sx={{ color: 'white' }}
+            size="small"
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent sx={{ p: 0 }}>
+          {fullReportLoading ? (
+            <Box sx={{ py: 8, textAlign: 'center' }}>
+              <CircularProgress size={48} />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                جاري تحميل تفاصيل الشركة...
+              </Typography>
+            </Box>
+          ) : fullReportError ? (
+            <Box sx={{ p: 3 }}>
+              <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                  {fullReportError}
+                </Typography>
+                <Typography variant="caption">
+                  تأكد من أن الـ Backend ينفّذ الـ endpoint: GET /api/companies/{fullReportCompany?.id}/full-report
+                </Typography>
+              </Alert>
+            </Box>
+          ) : fullReportData ? (
+            <Box>
+              {/* إحصاءات سريعة */}
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: 0,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
+                {[
+                  { label: 'الفروع', value: fullReportData.stats.branchesCount, icon: <BranchIcon />, color: '#2196f3' },
+                  { label: 'المشاريع', value: fullReportData.stats.projectsCount, icon: <ProjectIcon />, color: '#4caf50' },
+                  { label: 'المستخدمين', value: fullReportData.stats.usersCount, icon: <PeopleIcon />, color: '#ff9800' },
+                ].map((stat, idx) => (
+                  <Box
+                    key={idx}
+                    sx={{
+                      p: 2.5,
+                      textAlign: 'center',
+                      borderRight: idx < 2 ? '1px solid' : 'none',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Box sx={{ color: stat.color, mb: 0.5 }}>{stat.icon}</Box>
+                    <Typography variant="h4" sx={{ fontWeight: 800, color: stat.color }}>
+                      {stat.value}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {stat.label}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+
+              {/* الفروع */}
+              {fullReportData.branches.data.length > 0 && (
+                <Box sx={{ p: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <BranchIcon fontSize="small" color="primary" />
+                    الفروع ({fullReportData.branches.data.length}{fullReportData.branches.pagination.hasMore ? '+' : ''})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {fullReportData.branches.data.map(b => (
+                      <Chip
+                        key={b.id}
+                        label={b.NameSub}
+                        size="small"
+                        icon={<LocationIcon />}
+                        variant="outlined"
+                        color="primary"
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {/* المشاريع */}
+              {fullReportData.projects.data.length > 0 && (
+                <Box sx={{ p: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ProjectIcon fontSize="small" color="success" />
+                    أحدث المشاريع ({fullReportData.projects.data.length}{fullReportData.projects.pagination.hasMore ? '+' : ''})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+                    {fullReportData.projects.data.slice(0, 5).map(p => (
+                      <Box key={p.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Chip
+                          label={p.Disabled === 'true' || p.Disabled === '1' ? 'نشط' : 'متوقف'}
+                          size="small"
+                          color={p.Disabled === 'true' || p.Disabled === '1' ? 'success' : 'default'}
+                          sx={{ minWidth: 52, fontWeight: 600 }}
+                        />
+                        <Typography variant="body2" sx={{ flex: 1 }}>{p.Nameproject}</Typography>
+                        <Typography variant="caption" color="text.secondary">{p.branchName}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {/* آخر العمليات */}
+              {fullReportData.lastActivities.data.length > 0 && (
+                <Box sx={{ p: 2.5 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ScheduleIcon fontSize="small" color="action" />
+                    آخر العمليات ({fullReportData.lastActivities.data.length}{fullReportData.lastActivities.pagination.hasMore ? '+' : ''})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {fullReportData.lastActivities.data.slice(0, 5).map(a => (
+                      <Box key={a.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>{a.userName}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {a.movement_type} — {new Date(a.createdAt).toLocaleDateString('ar-SA')}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          ) : null}
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setFullReportOpen(false)} variant="outlined">
+            إغلاق
           </Button>
         </DialogActions>
       </Dialog>

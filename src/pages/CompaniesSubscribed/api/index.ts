@@ -5,4 +5,13 @@ export type {
   Project,
   Employee,
   ApiResponse,
+  CursorPagination,
+  CompanySummary,
+  CompaniesSummaryResponse,
+  CompanyFullReport,
+  CompanyFullReportResponse,
+  CompanyFullReportBranch,
+  CompanyFullReportProject,
+  CompanyFullReportUser,
+  CompanyFullReportActivity,
 } from './companiesSubscribedApi'; 

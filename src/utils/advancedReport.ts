@@ -23,6 +23,9 @@ export interface CompanyReportData {
   closedProjects: number;
   activeProjects: number;
   inactiveProjects: number;
+  cost?: number;
+  commercialRegistrationNumber?: number;
+  lastActivityAt?: string | null;
 }
 
 // ============================================================
@@ -168,10 +171,10 @@ async function fetchAllBranches(companyId: number): Promise<Branch[]> {
 }
 
 // ============================================================
-// الدالة الرئيسية لتجميع بيانات التقرير
+// الدالة الاحتياطية لتجميع بيانات التقرير (النظام القديم البطيء)
 // ============================================================
 
-export const generateAdvancedReportData = async (
+export const generateAdvancedReportDataFallback = async (
   onProgress?: (msg: string) => void
 ): Promise<CompanyReportData[]> => {
   const log = (msg: string) => {
@@ -179,7 +182,7 @@ export const generateAdvancedReportData = async (
     onProgress?.(msg);
   };
 
-  log('🚀 بدء استخراج التقرير الشامل...');
+  log('⏳ بدء استخراج التقرير بالنظام التقليدي (البطيء)...');
 
   // 1. جلب قائمة الشركات
   log('📋 جارٍ جلب قائمة الشركات...');
@@ -266,12 +269,107 @@ export const generateAdvancedReportData = async (
       closedProjects,
       activeProjects,
       inactiveProjects,
+      cost: (company as any).cost || 0,
+      commercialRegistrationNumber: Number((company as any).commercialRegistrationNumber || (company as any).registrationNumber) || 0,
     });
   }
 
-  log(`🎉 اكتمل التقرير! (${report.length} شركة)`);
+  log(`🎉 اكتمل التقرير التقليدي! (${report.length} شركة)`);
   return report;
 };
+
+// ============================================================
+// الدالة الرئيسية السريعة باستخدام GET /api/companies/summary
+// ============================================================
+
+export const generateAdvancedReportData = async (
+  onProgress?: (msg: string) => void
+): Promise<CompanyReportData[]> => {
+  const log = (msg: string) => {
+    console.log(msg);
+    onProgress?.(msg);
+  };
+
+  log('🚀 بدء استخراج التقرير الشامل باستخدام API السريع...');
+
+  try {
+    const report: CompanyReportData[] = [];
+    let afterId: number | undefined = undefined;
+    let hasMore = true;
+    let page = 1;
+
+    while (hasMore) {
+      log(`📋 جارٍ جلب الدفعة ${page} من الشركات...`);
+      const resp = await companiesSubscribedApi.getCompaniesSummary(afterId);
+
+      // إذا لم ينجح، نقوم بالتحويل للنظام القديم كـ Fallback
+      if (!resp.success || !resp.data) {
+        log('⚠️ الـ API السريع غير متوفر، جاري التحويل للنظام التقليدي...');
+        return await generateAdvancedReportDataFallback(onProgress);
+      }
+
+      if (resp.data.length === 0) {
+        break;
+      }
+
+      const batchReports = await Promise.all(
+        resp.data.map(async (summary) => {
+          let phone = (summary as any).phone || (summary as any).PhoneNumber || '—';
+          if (phone === '—') {
+            try {
+              const employeesRes = await companiesSubscribedApi.getCompanyEmployees(summary.companyId, 0, 1);
+              if (employeesRes.success && employeesRes.data && employeesRes.data.length > 0) {
+                phone = employeesRes.data[0].PhoneNumber || '—';
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          return {
+            companyName: summary.companyName || 'بدون اسم',
+            companyId: summary.companyId,
+            phone,
+            isActive: summary.disabledFinance === 'false' || summary.disabledFinance === '0',
+            subscriptionStart: summary.subscriptionStartDate || '',
+            subscriptionEnd: summary.subscriptionEndDate || '',
+            city: summary.city || '',
+            country: summary.country || '',
+            totalBranches: summary.branchesCount || 0,
+            totalEmployees: summary.usersCount || 0,
+            totalProjects: summary.projectsCount || 0,
+            openProjects: summary.projectsCount || 0, // لا نفرق بين المفتوح والمغلق في الملخص السريع
+            closedProjects: 0,
+            activeProjects: summary.projectsCount || 0,
+            inactiveProjects: 0,
+            cost: summary.cost || 0,
+            commercialRegistrationNumber: summary.commercialRegistrationNumber || 0,
+            lastActivityAt: summary.lastActivityAt || null,
+          };
+        })
+      );
+
+      report.push(...batchReports);
+
+      hasMore = resp.pagination?.hasMore || false;
+      afterId = resp.pagination?.nextCursor ?? undefined;
+      page++;
+    }
+
+    if (report.length > 0) {
+      log(`⚡ اكتمل التقرير السريع بلمح البصر! (${report.length} شركة)`);
+      return report;
+    } else {
+      log('⚠️ لم يتم العثور على بيانات بالـ API السريع، جاري التحويل للنظام التقليدي...');
+      return await generateAdvancedReportDataFallback(onProgress);
+    }
+  } catch (error) {
+    console.error('Fast API failed:', error);
+    log('⚠️ خطأ في الـ API السريع، جاري التحويل للنظام التقليدي...');
+    return await generateAdvancedReportDataFallback(onProgress);
+  }
+};
+
 
 // ============================================================
 // تصدير Excel بورقتين (ExcelJS) بتصميم احترافي مبهر
@@ -296,8 +394,9 @@ export const exportToExcel = async (
       closed: acc.closed + r.closedProjects,
       activeP: acc.activeP + r.activeProjects,
       inactiveP: acc.inactiveP + r.inactiveProjects,
+      cost: acc.cost + (r.cost || 0),
     }),
-    { branches: 0, employees: 0, projects: 0, open: 0, closed: 0, activeP: 0, inactiveP: 0 }
+    { branches: 0, employees: 0, projects: 0, open: 0, closed: 0, activeP: 0, inactiveP: 0, cost: 0 }
   );
 
   // 2. إنشاء الـ Workbook
@@ -344,29 +443,28 @@ export const exportToExcel = async (
   // تعريف الأعمدة للورقة الأولى بدون خاصية header لمنع تكرارها في الصف الأول المدمج
   ws1.columns = [
     { key: 'index', width: 6 },
-    { key: 'companyId', width: 15 },
-    { key: 'companyName', width: 45 },
-    { key: 'phone', width: 18 },
-    { key: 'city', width: 20 },
-    { key: 'country', width: 18 },
-    { key: 'isActive', width: 16 },
-    { key: 'subStart', width: 18 },
-    { key: 'subEnd', width: 18 },
-    { key: 'branches', width: 14 },
-    { key: 'employees', width: 16 },
-    { key: 'projects', width: 18 },
-    { key: 'activeProjects', width: 18 },
-    { key: 'inactiveProjects', width: 18 },
-    { key: 'open', width: 16 },
-    { key: 'closed', width: 16 },
+    { key: 'companyId', width: 12 },
+    { key: 'companyName', width: 40 },
+    { key: 'regNumber', width: 18 },
+    { key: 'phone', width: 15 },
+    { key: 'city', width: 18 },
+    { key: 'country', width: 15 },
+    { key: 'subStart', width: 15 },
+    { key: 'lastActivity', width: 22 },
+    { key: 'branches', width: 12 },
+    { key: 'employees', width: 14 },
+    { key: 'projects', width: 16 },
+    { key: 'activeProjects', width: 16 },
+    { key: 'inactiveProjects', width: 16 },
+    { key: 'open', width: 14 },
+    { key: 'closed', width: 14 },
   ];
 
-  // تنسيق صف العناوين الفعلي
   const headerRow1 = ws1.getRow(6);
   headerRow1.values = [
-    '#', 'الرقم الخاص', 'اسم الشركة', 'رقم الهاتف', 'المدينة', 'الدولة', 'الحالة',
-    'تاريخ الاشتراك', 'تاريخ الانتهاء', 'عدد الفروع', 'عدد الموظفين',
-    'إجمالي المشاريع', 'مشاريع مفعَّلة (اشتراك)', 'مشاريع غير مفعَّلة', 'مشاريع نشطة', 'مشاريع مغلقة'
+    '#', 'الرقم', 'اسم الشركة', 'السجل التجاري', 'رقم الهاتف', 'المدينة', 'الدولة',
+    'تاريخ الاشتراك', 'آخر نشاط', 'عدد الفروع', 'عدد المستخدمين',
+    'إجمالي المشاريع', 'مشاريع مفعَّلة', 'مشاريع غير مفعَّلة', 'مشاريع نشطة', 'مشاريع مغلقة'
   ];
   headerRow1.height = 35;
   headerRow1.eachCell((cell) => {
@@ -387,12 +485,12 @@ export const exportToExcel = async (
       index: idx + 1,
       companyId: item.companyId,
       companyName: item.companyName,
+      regNumber: item.commercialRegistrationNumber || '—',
       phone: item.phone,
       city: item.city || '—',
       country: item.country || '—',
-      isActive: item.isActive ? 'نشطة ✅' : 'متوقفة ❌',
       subStart: item.subscriptionStart?.slice(0, 10) || '—',
-      subEnd: item.subscriptionEnd?.slice(0, 10) || '—',
+      lastActivity: item.lastActivityAt ? new Date(item.lastActivityAt).toLocaleString('en-GB') : '—',
       branches: item.totalBranches,
       employees: item.totalEmployees,
       projects: item.totalProjects,
@@ -431,17 +529,6 @@ export const exportToExcel = async (
 
       // التلوين الأساسي للخلايا
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: baseColor } };
-
-      // تلوين خاص لحالة الشركة (أخضر للنشطة، أحمر للمتوقفة)
-      if (colKey === 'isActive') {
-        if (item.isActive) {
-          cell.font = { name: 'Arial', bold: true, color: { argb: 'FF15803D' } }; // Green-700
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } }; // Green-50
-        } else {
-          cell.font = { name: 'Arial', bold: true, color: { argb: 'FFB91C1C' } }; // Red-700
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } }; // Red-50
-        }
-      }
     });
   });
 
@@ -453,12 +540,12 @@ export const exportToExcel = async (
     index: '',
     companyId: '',
     companyName: `📊 الإجمالي الكلي لـ (${data.length}) شركة`,
+    regNumber: '',
     phone: '',
     city: '',
     country: '',
-    isActive: `نشطة: ${data.filter(d => d.isActive).length} | متوقفة: ${data.filter(d => !d.isActive).length}`,
     subStart: '',
-    subEnd: '',
+    lastActivity: '',
     branches: totals.branches,
     employees: totals.employees,
     projects: totals.projects,
@@ -528,6 +615,7 @@ export const exportToExcel = async (
     { label: '🏢 إجمالي الشركات المسجلة', value: data.length, type: 'header' },
     { label: '✅ الشركات النشطة', value: data.filter((d) => d.isActive).length, type: 'data' },
     { label: '❌ الشركات المتوقفة', value: data.filter((d) => !d.isActive).length, type: 'data' },
+    { label: '💰 إجمالي تكاليف الاشتراكات', value: `${totals.cost.toLocaleString('ar-SA')} ريال`, type: 'data', isCurrency: true },
     { label: '──────────', value: '', type: 'divider' },
     { label: '🌍 إجمالي الفروع المتصلة', value: totals.branches, type: 'header' },
     { label: '👥 إجمالي المستخدمين / الموظفين', value: totals.employees, type: 'header' },
@@ -559,7 +647,7 @@ export const exportToExcel = async (
         cell.font = { name: 'Arial', size: 12, italic: true, color: { argb: 'FF6B7280' } };
       }
 
-      if (typeof item.value === 'number') {
+      if (typeof item.value === 'number' && !item.isCurrency) {
         cell.numFmt = '#,##0';
       }
     });

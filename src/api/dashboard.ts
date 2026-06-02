@@ -178,13 +178,122 @@ export const calculatePercentage = (value: number, total: number): string => {
   return `${((value / total) * 100).toFixed(2)}%`;
 };
 
+// ===== سجل العمليات =====
+
+/** سجل عملية واحدة من جدول Flowmove */
+export interface ActivityLogEntry {
+  id: number;
+  type: string;       // movement_type من الـ backend (الحقل الأصلي)
+  title?: string;     // عنوان وصفي مُولَّد في الفرونت
+  description?: string;
+  userId?: number;
+  companyId?: number;
+  companyName?: string;
+  userName?: string;
+  PhoneNumber?: string;
+  createdAt: string;
+  details?: string;
+}
+
+export interface ActivityLogPagination {
+  pageSize: number;
+  nextCursor: number | null;
+  hasMore: boolean;
+}
+
+export interface ActivityLogResponse {
+  success: boolean;
+  data: ActivityLogEntry[];
+  pagination: ActivityLogPagination;
+}
+
+/**
+ * جلب سجل آخر العمليات بنظام المؤشر
+ * GET /api/dashboard/activity-log
+ * @param afterId - مؤشر الـ ID للبدء من بعده (للتحميل التدريجي)
+ */
+export const fetchActivityLog = async (afterId?: number): Promise<ActivityLogResponse> => {
+  try {
+    const params: Record<string, any> = {};
+    if (afterId !== undefined && afterId > 0) {
+      params.afterId = afterId;
+    }
+
+    const response = await apiClient.get('/dashboard/activity-log', { params });
+    const resData = response.data;
+
+    if (resData?.success === true || resData?.success === 'true') {
+      // تحويل movement_type إلى عنوان وصفي
+      const enrichedData = (resData.data || []).map((entry: any) => ({
+        ...entry,
+        type: entry.type || entry.movement_type || 'UNKNOWN',
+        title: entry.title || formatActivityType(entry.type || entry.movement_type || ''),
+        description: entry.description || `قام ${entry.userName || 'مستخدم'} بـ ${formatActivityType(entry.type || entry.movement_type || '')}`,
+        createdAt: entry.createdAt || entry.Time || '',
+        userId: entry.userId || entry.id,
+        companyId: entry.companyId || entry.IDCompany,
+        companyName: entry.companyName || entry.company_name || entry.CompanyName || entry.NameCompany || undefined,
+        details: entry.Note || entry.note || entry.description || entry.details || undefined,
+      }));
+
+      return {
+        success: true,
+        data: enrichedData,
+        pagination: resData.pagination || {
+          pageSize: enrichedData.length,
+          nextCursor: null,
+          hasMore: false,
+        },
+      };
+    }
+
+    return {
+      success: false,
+      data: [],
+      pagination: { pageSize: 0, nextCursor: null, hasMore: false },
+    };
+  } catch (error: any) {
+    console.error('خطأ في جلب سجل العمليات:', error);
+    return {
+      success: false,
+      data: [],
+      pagination: { pageSize: 0, nextCursor: null, hasMore: false },
+    };
+  }
+};
+
+/**
+ * تحويل نوع العملية إلى نص عربي وصفي
+ */
+export const formatActivityType = (type: string): string => {
+  const typeMap: Record<string, string> = {
+    'UPDATE_PROJECT': 'تعديل مشروع',
+    'CREATE_PROJECT': 'إنشاء مشروع',
+    'DELETE_PROJECT': 'حذف مشروع',
+    'UPDATE_COMPANY': 'تعديل شركة',
+    'CREATE_COMPANY': 'إنشاء شركة',
+    'DELETE_COMPANY': 'حذف شركة',
+    'UPDATE_BRANCH': 'تعديل فرع',
+    'CREATE_BRANCH': 'إنشاء فرع',
+    'DELETE_BRANCH': 'حذف فرع',
+    'UPDATE_USER': 'تعديل مستخدم',
+    'CREATE_USER': 'إضافة مستخدم',
+    'DELETE_USER': 'حذف مستخدم',
+    'LOGIN': 'تسجيل دخول',
+    'LOGOUT': 'تسجيل خروج',
+  };
+  return typeMap[type] || type || 'عملية غير محددة';
+};
+
 const dashboardApi = {
   fetchDashboardStats,
   fetchDashboardReports,
+  fetchActivityLog,
   formatProjectStatus,
   formatProgress,
   formatDashboardCurrency,
   formatDashboardDate,
+  formatActivityType,
   calculatePercentage
 };
 
