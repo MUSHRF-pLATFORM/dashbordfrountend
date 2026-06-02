@@ -224,17 +224,35 @@ export const fetchActivityLog = async (afterId?: number): Promise<ActivityLogRes
 
     if (resData?.success === true || resData?.success === 'true') {
       // تحويل movement_type إلى عنوان وصفي
-      const enrichedData = (resData.data || []).map((entry: any) => ({
-        ...entry,
-        type: entry.type || entry.movement_type || 'UNKNOWN',
-        title: entry.title || formatActivityType(entry.type || entry.movement_type || ''),
-        description: entry.description || `قام ${entry.userName || 'مستخدم'} بـ ${formatActivityType(entry.type || entry.movement_type || '')}`,
-        createdAt: entry.createdAt || entry.Time || '',
-        userId: entry.userId || entry.id,
-        companyId: entry.companyId || entry.IDCompany,
-        companyName: entry.companyName || entry.company_name || entry.CompanyName || entry.NameCompany || undefined,
-        details: entry.Note || entry.note || entry.description || entry.details || undefined,
-      }));
+      const enrichedData = (resData.data || []).map((entry: any) => {
+        const actualType = entry.type || entry.movement_type || entry.Movementtype || entry.MovementType || entry.title || 'UNKNOWN';
+        const formattedType = formatActivityType(actualType);
+        
+        let processedDescription = entry.description || `قام ${entry.userName || 'مستخدم'} بـ ${formattedType}`;
+        
+        // التقاط المفتاح الإنجليزي من الوصف إذا كان الباك إند يرسله داخل النص
+        if (processedDescription.includes('إجراء حركة:')) {
+          const parts = processedDescription.split('إجراء حركة:');
+          if (parts.length > 1) {
+            const englishKey = parts[1].trim();
+            // استخدام دالة الترجمة الذكية لترجمة المفتاح المخبأ
+            const translatedKey = formatActivityType(englishKey);
+            processedDescription = `${parts[0]}إجراء حركة: ${translatedKey}`;
+          }
+        }
+
+        return {
+          ...entry,
+          type: actualType === 'OPERATION' ? 'عملية بالنظام' : actualType, // تعريب كلمة OPERATION
+          title: entry.title === 'OPERATION' ? 'عملية بالنظام' : (entry.title || formattedType),
+          description: processedDescription,
+          createdAt: entry.createdAt || entry.Time || '',
+          userId: entry.userId || entry.id,
+          companyId: entry.companyId || entry.IDCompany,
+          companyName: entry.companyName || entry.company_name || entry.CompanyName || entry.NameCompany || undefined,
+          details: entry.Note || entry.note || entry.description || entry.details || undefined,
+        };
+      });
 
       return {
         success: true,
@@ -248,12 +266,12 @@ export const fetchActivityLog = async (afterId?: number): Promise<ActivityLogRes
     }
 
     return {
-      success: false,
+      success: true,
       data: [],
       pagination: { pageSize: 0, nextCursor: null, hasMore: false },
     };
-  } catch (error: any) {
-    console.error('خطأ في جلب سجل العمليات:', error);
+  } catch (error) {
+    console.error('❌ خطأ في جلب سجل العمليات:', error);
     return {
       success: false,
       data: [],
@@ -266,33 +284,146 @@ export const fetchActivityLog = async (afterId?: number): Promise<ActivityLogRes
  * تحويل نوع العملية إلى نص عربي وصفي
  */
 export const formatActivityType = (type: string): string => {
+  if (!type) return 'عملية غير محددة';
+
   const typeMap: Record<string, string> = {
-    'UPDATE_PROJECT': 'تعديل مشروع',
-    'CREATE_PROJECT': 'إنشاء مشروع',
-    'DELETE_PROJECT': 'حذف مشروع',
-    'UPDATE_COMPANY': 'تعديل شركة',
-    'CREATE_COMPANY': 'إنشاء شركة',
-    'DELETE_COMPANY': 'حذف شركة',
-    'UPDATE_BRANCH': 'تعديل فرع',
-    'CREATE_BRANCH': 'إنشاء فرع',
-    'DELETE_BRANCH': 'حذف فرع',
-    'UPDATE_USER': 'تعديل مستخدم',
-    'CREATE_USER': 'إضافة مستخدم',
-    'DELETE_USER': 'حذف مستخدم',
-    'LOGIN': 'تسجيل دخول',
-    'LOGOUT': 'تسجيل خروج',
-    'UPDATEImplementRquestsORCansle': 'تحديث أو إلغاء طلب تنفيذ',
-    'CREATEImplementRquests': 'إنشاء طلب تنفيذ',
-    'DELETEImplementRquests': 'حذف طلب تنفيذ',
+    // ===== عمليات المشاريع =====
+    'update_project': 'تعديل مشروع',
+    'create_project': 'إنشاء مشروع',
+    'delete_project': 'حذف مشروع',
+    'updatadataproject': 'تعديل بيانات مشروع',
+    'updatestartdate': 'تعديل تاريخ بداية المشروع',
+    'rearrangestage': 'إعادة ترتيب المراحل',
+    'updatenotesstage': 'تعديل ملاحظات المرحلة',
+    'updatedatastage': 'تعديل بيانات المرحلة',
+    'updatedatastagesub': 'تعديل بيانات المرحلة الفرعية',
+    'updatenamefolderorfileinarchive': 'تعديل اسم ملف/مجلد في الأرشيف',
+    'expenseupdate': 'تعديل مصروف',
+    'revenuesupdate': 'تعديل إيراد',
+    'returnsupdate': 'تعديل مرتجع',
+    'updatedatarequests': 'تعديل بيانات طلب',
+    'updateimplementrquestsorcansle': 'تحديث أو إلغاء طلب تنفيذ',
+    'updateimplementrequestsorcansle': 'تحديث أو إلغاء طلب تنفيذ',
+    'confirmarrivdrequest': 'تأكيد وصول طلب',
+    'createimplementrquests': 'إنشاء طلب تنفيذ',
+    'createimplementrequests': 'إنشاء طلب تنفيذ',
+    'deleteimplementrquests': 'حذف طلب تنفيذ',
+    'deleteimplementrequests': 'حذف طلب تنفيذ',
+    'implementedbyopreation': 'تنفيذ عملية',
+    'implementedbyoperation': 'تنفيذ عملية',
+
+    // ===== عمليات الشركات =====
+    'update_company': 'تعديل شركة',
+    'create_company': 'إنشاء شركة',
+    'delete_company': 'حذف شركة',
+    'updatedatacompany': 'تعديل بيانات الشركة',
+    'updateapicompany': 'تعديل مفتاح API للشركة',
+    'updatecompanydaschbord': 'تعديل بيانات الشركة (لوحة التحكم)',
+    'agreedregistrationcompany': 'قبول تسجيل شركة جديدة',
+    'deletecompanyregistration': 'حذف طلب تسجيل شركة',
+    'updatedataregistration': 'تعديل بيانات تسجيل شركة',
+
+    // ===== عمليات الفروع =====
+    'update_branch': 'تعديل فرع',
+    'create_branch': 'إنشاء فرع',
+    'delete_branch': 'حذف فرع',
+    'updatecompanybrinsh': 'تعديل بيانات فرع',
+    'updatecompanysubdaschbord': 'تعديل فرع (لوحة التحكم)',
+    'deletecompanysubdaschbord': 'حذف فرع (لوحة التحكم)',
+    'branchdeletionprocedures': 'إجراءات حذف فرع',
+    'acceptandrejectrequests': 'قبول أو رفض طلبات الفرع',
+    'updatecovenantrequests': 'تعديل طلبات العهدة',
+    'deletecovenantrequests': 'حذف طلبات العهدة',
+
+    // ===== عمليات المستخدمين =====
+    'update_user': 'تعديل مستخدم',
+    'create_user': 'إضافة مستخدم',
+    'delete_user': 'حذف مستخدم',
+    'deletuser': 'حذف مستخدم',
+    'usercompanyupdat': 'تعديل بيانات مستخدم',
+    'usercompanyupdatdashbord': 'تعديل بيانات مستخدم (لوحة التحكم)',
+    'updatusercompanyinbrinsh': 'تعديل صلاحيات مستخدم في فرع',
+    'updatusercompanyinbrinshv2': 'تعديل صلاحيات مستخدم في فرع (محسّن)',
+    'insertmultipleprojecsinvalidity': 'تعديل صلاحيات مشاريع متعددة لمستخدم',
+
+    // ===== عمليات القوالب =====
+    'deletstagehometemplet': 'حذف مرحلة رئيسية من القالب',
+    'deletstagesubtemplet': 'حذف مرحلة فرعية من القالب',
+
+    // ===== عمليات تسجيل الدخول =====
+    'login': 'تسجيل دخول',
+    'logout': 'تسجيل خروج',
   };
 
-  if (typeMap[type]) return typeMap[type];
+  const normalizedType = type.trim().toLowerCase();
+  
+  if (typeMap[normalizedType]) return typeMap[normalizedType];
 
-  // محاولة تحسين قراءة الأسماء غير المعروفة
-  return type
-    .replace(/_/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .trim() || 'عملية غير محددة';
+  // محاولة تحسين قراءة الأسماء غير المعروفة برمجياً وترجمتها
+  let fallback = type;
+  
+  // تحويل الصيغة مثل Implementedbyopreation إلى كلمات منفصلة
+  fallback = fallback.replace(/_/g, ' ');
+  fallback = fallback.replace(/([a-z])([A-Z])/g, '$1 $2');
+  
+  // قاموس مصغر للكلمات الشائعة في الباك إند
+  const fallbackDict: Record<string, string> = {
+    'update': 'تعديل',
+    'updat': 'تعديل',
+    'delete': 'حذف',
+    'delet': 'حذف',
+    'create': 'إنشاء',
+    'add': 'إضافة',
+    'insert': 'إضافة',
+    'project': 'مشروع',
+    'projects': 'مشاريع',
+    'company': 'شركة',
+    'companies': 'شركات',
+    'user': 'مستخدم',
+    'users': 'مستخدمين',
+    'branch': 'فرع',
+    'brinsh': 'فرع',
+    'sub': 'فرع',
+    'stage': 'مرحلة',
+    'request': 'طلب',
+    'requests': 'طلبات',
+    'rquests': 'طلبات',
+    'expense': 'مصروف',
+    'revenue': 'إيراد',
+    'return': 'مرتجع',
+    'data': 'بيانات',
+    'password': 'كلمة المرور',
+    'login': 'تسجيل دخول',
+    'logout': 'تسجيل خروج',
+    'in': 'في',
+    'from': 'من',
+    'to': 'إلى',
+    'file': 'ملف',
+    'files': 'ملفات',
+    'folder': 'مجلد',
+    'folders': 'مجلدات',
+    'archive': 'أرشيف',
+    'notes': 'ملاحظات',
+    'startdate': 'تاريخ البداية',
+    'new': 'جديد',
+    'operation': 'عملية بالنظام',
+  };
+
+  // تبديل كل كلمة بما يقابلها
+  const words = fallback.split(' ');
+  const translatedWords = words.map(word => {
+    const lowerWord = word.toLowerCase();
+    return fallbackDict[lowerWord] || word; // إذا لم تكن في القاموس، اتركها كما هي
+  });
+
+  const finalTranslation = translatedWords.join(' ').trim();
+  
+  // إذا لم يجد أي ترجمة وكان النص لا يزال إنجليزي بشكل كامل
+  if (finalTranslation.match(/^[a-zA-Z\s]+$/)) {
+    return finalTranslation || 'عملية غير محددة';
+  }
+
+  return finalTranslation;
 };
 
 const dashboardApi = {

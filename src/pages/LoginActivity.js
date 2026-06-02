@@ -81,7 +81,7 @@ import {
   Timeline as TimelineIcon
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
-import { fetchActivityLog } from '../api/dashboard';
+import { fetchActivityLog, formatActivityType } from '../api/dashboard';
 import { fetchCompanies } from '../api/database-api';
 import { History as HistoryIcon, Refresh as RefreshIcon, ExpandMore as ExpandMoreIcon, Assignment as AssignmentIcon, Build as BuildIcon, AccountTree as AccountTreeIcon } from '@mui/icons-material';
 import { List, ListItem, ListItemAvatar, ListItemText } from '@mui/material';
@@ -117,8 +117,8 @@ const LoginActivity = () => {
   // فلترة سجل العمليات
   const [activitySearchName, setActivitySearchName] = useState('');
   const [activityFilterDate, setActivityFilterDate] = useState('');
+  const [activitySearchCompany, setActivitySearchCompany] = useState('');
 
-  
   const loadCompanies = async () => {
     try {
       const result = await fetchCompanies({ limit: 500, page: 1 });
@@ -595,7 +595,7 @@ const LoginActivity = () => {
                     البحث بالكود
                   </Button>
                 </Grid>
-                </Grid>
+              </Grid>
 
               <Box sx={{ mt: 1, textAlign: 'right' }}>
                 <Typography variant="body2" color="text.secondary">
@@ -883,12 +883,12 @@ const LoginActivity = () => {
             </Box>
 
             <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-              {/* فلترة بالاسم والتاريخ */}
+              {/* فلترة بالاسم والتاريخ والشركة */}
               <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
                 <TextField
                   size="small"
-                  label="بحث بالاسم"
-                  placeholder="اكتب اسم المستخدم..."
+                  label="بحث بالاسم أو الكود"
+                  placeholder="اكتب اسم المستخدم أو المفتاح..."
                   value={activitySearchName}
                   onChange={(e) => setActivitySearchName(e.target.value)}
                   sx={{ minWidth: 200, flex: 1 }}
@@ -902,6 +902,21 @@ const LoginActivity = () => {
                 />
                 <TextField
                   size="small"
+                  label="بحث باسم الشركة"
+                  placeholder="اكتب اسم الشركة..."
+                  value={activitySearchCompany}
+                  onChange={(e) => setActivitySearchCompany(e.target.value)}
+                  sx={{ minWidth: 200, flex: 1 }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <BusinessIcon sx={{ fontSize: 18, color: theme.palette.text.disabled }} />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+                <TextField
+                  size="small"
                   label="فلترة بالتاريخ"
                   type="date"
                   value={activityFilterDate}
@@ -909,11 +924,11 @@ const LoginActivity = () => {
                   sx={{ minWidth: 180 }}
                   InputLabelProps={{ shrink: true }}
                 />
-                {(activitySearchName || activityFilterDate) && (
+                {(activitySearchName || activityFilterDate || activitySearchCompany) && (
                   <Button
                     size="small"
                     variant="text"
-                    onClick={() => { setActivitySearchName(''); setActivityFilterDate(''); }}
+                    onClick={() => { setActivitySearchName(''); setActivityFilterDate(''); setActivitySearchCompany(''); }}
                     sx={{ color: theme.palette.error.main, fontWeight: 600, minWidth: 'auto' }}
                   >
                     مسح الفلاتر
@@ -979,6 +994,15 @@ const LoginActivity = () => {
                 </Box>
               ) : (() => {
                 const filteredLog = activityLog.filter(entry => {
+                  // فلترة بالشركة (بحث نصي باسم الشركة)
+                  if (activitySearchCompany) {
+                    const q = activitySearchCompany.toLowerCase();
+                    const comp = companiesData.find(c => String(c.id || c.IDCompany || c.ID) === String(entry.companyId || entry.IDCompany));
+                    const companyName = comp ? (comp.name || comp.NameCompany || comp.namecompany) : (entry.companyName || '');
+                    
+                    if (!companyName || !companyName.toLowerCase().includes(q)) return false;
+                  }
+
                   // فلترة بالاسم (يبحث في كل الحقول المعروضة)
                   if (activitySearchName) {
                     const q = activitySearchName.toLowerCase();
@@ -1021,107 +1045,112 @@ const LoginActivity = () => {
                 }
 
                 return (
-                <List disablePadding>
-                  {filteredLog
-                    .map((entry, index) => (
-                    <React.Fragment key={entry.id}>
-                      <ListItem
-                        alignItems="flex-start"
-                        sx={{
-                          borderRadius: 2,
-                          mb: 0.5,
-                          px: 1.5,
-                          py: 1,
-                          transition: 'background 0.2s ease',
-                          '&:hover': { bgcolor: theme.palette.action.hover },
-                        }}
-                      >
-                        <ListItemAvatar>
-                          <Avatar
+                  <List disablePadding>
+                    {filteredLog
+                      .map((entry, index) => (
+                        <React.Fragment key={entry.id}>
+                          <ListItem
+                            alignItems="flex-start"
                             sx={{
-                              width: 38,
-                              height: 38,
-                              fontSize: '0.85rem',
-                              background:
-                                entry.type?.includes('PROJECT') ? 'linear-gradient(135deg, #2196f3, #1565c0)' :
-                                entry.type?.includes('COMPANY') ? 'linear-gradient(135deg, #9c27b0, #6a1b9a)' :
-                                entry.type?.includes('USER') ? 'linear-gradient(135deg, #4caf50, #2e7d32)' :
-                                entry.type?.includes('BRANCH') ? 'linear-gradient(135deg, #ff9800, #e65100)' :
-                                'linear-gradient(135deg, #607d8b, #37474f)',
-                              color: 'white',
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                              borderRadius: 2,
+                              mb: 0.5,
+                              px: 1.5,
+                              py: 1,
+                              transition: 'background 0.2s ease',
+                              '&:hover': { bgcolor: theme.palette.action.hover },
                             }}
                           >
-                            {entry.type?.includes('PROJECT') ? <AssignmentIcon sx={{ fontSize: 18 }} /> :
-                             entry.type?.includes('COMPANY') ? <BusinessIcon sx={{ fontSize: 18 }} /> :
-                             entry.type?.includes('USER') ? <PersonIcon sx={{ fontSize: 18 }} /> :
-                             entry.type?.includes('BRANCH') ? <AccountTreeIcon sx={{ fontSize: 18 }} /> :
-                             <BuildIcon sx={{ fontSize: 18 }} />}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                              <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                                {entry.title || entry.type}
-                              </Typography>
-                              {(() => {
-                                const comp = companiesData.find(c => String(c.id || c.IDCompany || c.ID) === String(entry.companyId || entry.IDCompany));
-                                const cName = entry.companyName || (comp ? (comp.name || comp.NameCompany || comp.companyName || comp.Name) : null);
-                                if (!entry.companyId && !cName) return null;
-                                return (
-                                  <Chip
-                                    label={cName ? `شركة: ${cName}` : `شركة #${entry.companyId}`}
-                                    size="small"
-                                    sx={{
-                                      height: 18,
-                                      fontSize: '0.7rem',
-                                      bgcolor: theme.palette.primary.main + '20',
-                                      color: theme.palette.primary.main,
-                                      fontWeight: 600,
-                                    }}
-                                  />
-                                );
-                              })()}
-                            </Box>
-                          }
-                          secondary={
-                            <Box sx={{ mt: 0.5 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                {entry.userName && (
-                                  <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                                    <PersonIcon sx={{ fontSize: 12 }} />
-                                    {entry.userName}
+                            <ListItemAvatar>
+                              <Avatar
+                                sx={{
+                                  width: 38,
+                                  height: 38,
+                                  fontSize: '0.85rem',
+                                  background: (() => {
+                                    const t = (entry.type || '').toLowerCase();
+                                    if (t.includes('project') || t.includes('stage') || t.includes('expense') || t.includes('revenue') || t.includes('return') || t.includes('request') || t.includes('archive') || t.includes('folder') || t.includes('file') || t.includes('implement') || t.includes('arriv') || t.includes('rquests')) return 'linear-gradient(135deg, #2196f3, #1565c0)';
+                                    if (t.includes('company') || t.includes('registration')) return 'linear-gradient(135deg, #9c27b0, #6a1b9a)';
+                                    if (t.includes('user') || t.includes('delet') || t.includes('updat') || t.includes('insert')) return 'linear-gradient(135deg, #4caf50, #2e7d32)';
+                                    if (t.includes('branch') || t.includes('brinsh') || t.includes('covenant') || t.includes('covenan') || t.includes('accept') || t.includes('reject')) return 'linear-gradient(135deg, #ff9800, #e65100)';
+                                    return 'linear-gradient(135deg, #607d8b, #37474f)';
+                                  })(),
+                                  color: 'white',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                }}
+                              >
+                                {(() => {
+                                  const t = (entry.type || '').toLowerCase();
+                                  if (t.includes('project') || t.includes('stage') || t.includes('expense') || t.includes('revenue') || t.includes('return') || t.includes('request') || t.includes('archive') || t.includes('rquests') || t.includes('implement') || t.includes('arriv')) return <AssignmentIcon sx={{ fontSize: 18 }} />;
+                                  if (t.includes('company') || t.includes('registration')) return <BusinessIcon sx={{ fontSize: 18 }} />;
+                                  if (t.includes('user') || t.includes('delet') || t.includes('updat') || t.includes('insert')) return <PersonIcon sx={{ fontSize: 18 }} />;
+                                  if (t.includes('branch') || t.includes('brinsh') || t.includes('covenant') || t.includes('covenan') || t.includes('accept') || t.includes('reject')) return <AccountTreeIcon sx={{ fontSize: 18 }} />;
+                                  return <BuildIcon sx={{ fontSize: 18 }} />;
+                                })()}
+                              </Avatar>
+                            </ListItemAvatar>
+                            <ListItemText
+                              primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
+                                    {entry.title || formatActivityType(entry.type || entry.movement_type || '')}
                                   </Typography>
-                                )}
-                                {entry.PhoneNumber && (
-                                  <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.3, color: theme.palette.text.secondary }}>
-                                    📱 {entry.PhoneNumber}
-                                  </Typography>
-                                )}
-                                {entry.createdAt && (
-                                  <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.3, color: theme.palette.text.disabled }}>
-                                    <ScheduleIcon sx={{ fontSize: 12 }} />
-                                    {formatGregorianDateTime(entry.createdAt)}
-                                  </Typography>
-                                )}
-                              </Box>
-                              {(entry.details || entry.description) && (
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: '0.8rem', lineHeight: 1.4 }}>
-                                  {entry.details || entry.description}
-                                </Typography>
-                              )}
-                            </Box>
-                          }
-                          secondaryTypographyProps={{ component: 'div' }}
-                        />
-                      </ListItem>
-                      {index < filteredLog.length - 1 && (
-                        <Divider sx={{ opacity: 0.2, mx: 2 }} />
-                      )}
-                    </React.Fragment>
-                  ))}
-                </List>
+                                  {(() => {
+                                    const comp = companiesData.find(c => String(c.id || c.IDCompany || c.ID) === String(entry.companyId || entry.IDCompany));
+                                    const cName = entry.companyName || (comp ? (comp.name || comp.NameCompany || comp.companyName || comp.Name) : null);
+                                    if (!entry.companyId && !cName) return null;
+                                    return (
+                                      <Chip
+                                        label={cName ? `شركة: ${cName}` : `شركة #${entry.companyId}`}
+                                        size="small"
+                                        sx={{
+                                          height: 18,
+                                          fontSize: '0.7rem',
+                                          bgcolor: theme.palette.primary.main + '20',
+                                          color: theme.palette.primary.main,
+                                          fontWeight: 600,
+                                        }}
+                                      />
+                                    );
+                                  })()}
+                                </Box>
+                              }
+                              secondary={
+                                <Box sx={{ mt: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    {entry.userName && (
+                                      <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
+                                        <PersonIcon sx={{ fontSize: 12 }} />
+                                        {entry.userName}
+                                      </Typography>
+                                    )}
+                                    {entry.PhoneNumber && (
+                                      <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.3, color: theme.palette.text.secondary }}>
+                                        📱 {entry.PhoneNumber}
+                                      </Typography>
+                                    )}
+                                    {entry.createdAt && (
+                                      <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.3, color: theme.palette.text.disabled }}>
+                                        <ScheduleIcon sx={{ fontSize: 12 }} />
+                                        {formatGregorianDateTime(entry.createdAt)}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                  {(entry.details || entry.description) && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: '0.8rem', lineHeight: 1.4 }}>
+                                      {entry.details || entry.description}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              }
+                              secondaryTypographyProps={{ component: 'div' }}
+                            />
+                          </ListItem>
+                          {index < filteredLog.length - 1 && (
+                            <Divider sx={{ opacity: 0.2, mx: 2 }} />
+                          )}
+                        </React.Fragment>
+                      ))}
+                  </List>
                 );
               })()}
 
