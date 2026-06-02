@@ -40,6 +40,7 @@ export interface PaginationParams {
   limit?: number;
   lastId?: string | number;
   page?: number;
+  searchTerm?: string;
 }
 
 // =========================
@@ -996,12 +997,15 @@ export const fetchCompanyEmployees = async (
   companyId: string,
   params: PaginationParams = {}
 ): Promise<{employees: Employee[], pagination?: any, hasMore?: boolean}> => {
-  const { limit = 10, lastId = 0 } = params;
+  const { limit = 10, lastId = 0, searchTerm } = params;
   
   const queryParams = new URLSearchParams();
   queryParams.append('IDCompany', companyId);
   queryParams.append('number', lastId.toString());
   queryParams.append('limit', limit.toString());
+  if (searchTerm && searchTerm.trim() !== '') {
+    queryParams.append('kind_request', searchTerm.trim());
+  }
   
   console.log(`🔍 Fetching employees for companyId: ${companyId} with params:`, { limit, lastId });
   

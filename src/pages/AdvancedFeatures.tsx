@@ -295,7 +295,7 @@ const AdvancedFeatures: React.FC = () => {
 
   // جلب صفحة نتائج بحث الموظفين بشكل متدرج حسب lastId
   const loadEmployeeSearchPage = async (currentPage: number) => {
-    if (activeTab !== 2) return;
+    if (activeTab !== 1) return;
     if (!selectedCompanyId) return;
     const term = (employeeSearchTerm || '').trim().toLowerCase();
     if (!term) return;
@@ -305,47 +305,21 @@ const AdvancedFeatures: React.FC = () => {
 
       const targetCount = itemsPerPage;
       const startLastId = employeeSearchLastIds[currentPage - 1] || 0;
+      
+      // استخدام API الموظفين وتمرير كلمة البحث للباك إند مباشرة
+      const result = await fetchCompanyEmployees(String(selectedCompanyId), { 
+        lastId: startLastId, 
+        limit: itemsPerPage,
+        searchTerm: term
+      });
+      
+      const collected = (result.employees || []) as any[];
       let workingLastId = startLastId;
-      let collected: any[] = [];
-      let iterations = 0;
-      const maxIterations = 50; // حماية من الحلقات الطويلة
-
-      while (collected.length < targetCount && iterations < maxIterations) {
-        iterations++;
-        // استخدام API الموظفين مع pagination (دفعات) ثم فلترة محلية بالاسم
-        const result = await fetchCompanyEmployees(String(selectedCompanyId), { lastId: workingLastId, limit: itemsPerPage });
-        const batchAll = (result.employees || []) as any[];
-        if (batchAll.length === 0) {
-          // لا مزيد من البيانات
-          break;
-        }
-        // فلترة حسب الاسم أو رقم الهاتف
-        const termDigits = term.replace(/[^0-9]/g, '');
-        const filtered = batchAll.filter((e: any) => {
-          const name = String(e?.userName || '').toLowerCase();
-          const rawPhone = String(e?.PhoneNumber ?? '');
-          const phoneDigits = rawPhone.replace(/[^0-9]/g, '');
-          const phoneMatches = termDigits ? phoneDigits.includes(termDigits) : rawPhone.includes(term);
-          return name.includes(term) || phoneMatches;
-        });
-        // منع التكرار داخل الصفحة
-        for (const emp of filtered) {
-          if (!collected.some((x) => String(x.id) === String(emp.id))) {
-            collected.push(emp);
-            if (collected.length >= targetCount) break;
-          }
-        }
-        // تحديث lastId للدفعة المقبلة (بناءً على أكبر id في الدفعة الخام)
-        const nextLast = batchAll.reduce((m, e) => {
-          const v = Number(e?.id) || 0;
-          return v > m ? v : m;
-        }, workingLastId);
-        workingLastId = nextLast <= workingLastId ? workingLastId + 5 : nextLast;
-        // إذا كانت الدفعة أقل من limit، قد لا يكون هناك المزيد لكن نستمر قليلاً لتجاوز عناصر لا تطابق البحث
-        if (batchAll.length < itemsPerPage && collected.length < targetCount) {
-          // سنحاول تكرار حلقة إضافية أو اثنتين قبل التوقف
-          if (iterations > 5) break;
-        }
+      if (collected.length > 0) {
+        workingLastId = collected.reduce((max, emp) => {
+          const id = Number(emp.id) || 0;
+          return id > max ? id : max;
+        }, startLastId);
       }
 
       setEmployees(collected);
@@ -364,7 +338,7 @@ const AdvancedFeatures: React.FC = () => {
       setTotalItems(total);
       setTotalPages(Math.max(1, Math.ceil(total / itemsPerPage)));
     } catch (e) {
-      console.error('❌ Error in progressive employee search:', e);
+      console.error('❌ Error in employee search:', e);
       setEmployees([]);
       setIsEmployeeSearchMode(true);
       setTotalItems((current) => (page - 1) * itemsPerPage);
@@ -386,11 +360,6 @@ const AdvancedFeatures: React.FC = () => {
         break;
       }
       case 1: {
-        const subs = await fetchData('revenue', filters);
-        setSubscriptions(subs);
-        break;
-      }
-      case 2: {
         // إذا كان وضع البحث مفعلاً، لا نجلب القائمة العادية
         if (isEmployeeSearchMode && employeeSearchTerm.trim()) {
           await loadEmployeeSearchPage(page);
@@ -460,20 +429,6 @@ const AdvancedFeatures: React.FC = () => {
         </tr>
       `).join('');
     } else if (activeTab === 1) {
-      headers = ['م', 'رقم الشركة', 'اسم الشركة', 'الباقة', 'المبلغ', 'تاريخ البداية', 'تاريخ النهاية', 'الحالة'];
-      rowsHtml = data.map((item: any, i: number) => `
-        <tr>
-          <td>${safeText(num(i))}</td>
-          <td>${safeText(item.companyId || item.id)}</td>
-          <td>${safeText(item.companyName)}</td>
-          <td>${safeText(item.planName)}</td>
-          <td>${safeText(formatAmount(item.amount))}</td>
-          <td>${safeText(formatDate(item.startDate))}</td>
-          <td>${safeText(formatDate(item.endDate))}</td>
-          <td>${(() => { const raw = String(item.status || '').toLowerCase(); return raw === 'expired' ? 'منتهي' : raw === 'active' ? 'نشط' : safeText(item.status); })()}</td>
-        </tr>
-      `).join('');
-    } else if (activeTab === 2) {
       headers = ['م', 'المعرف', 'الاسم', 'الوظيفة', 'القسم', 'الهاتف', 'الحالة'];
       rowsHtml = data.map((item: any, i: number) => `
         <tr>
@@ -580,8 +535,7 @@ const AdvancedFeatures: React.FC = () => {
   const getCurrentTabData = () => {
     switch (activeTab) {
       case 0: return requests;
-      case 1: return subscriptions;
-      case 2: return employees;
+      case 1: return employees;
       default: return [];
     }
   };
@@ -600,7 +554,8 @@ const AdvancedFeatures: React.FC = () => {
 
   // تحميل جميع الشركات مرة واحدة (محسّن)
   const loadAllCompanies = async () => {
-    if (allCompaniesCache.length > 0 || isLoadingAllCompanies) return;
+    if (allCompaniesCache.length > 0) return allCompaniesCache;
+    if (isLoadingAllCompanies) return []; // تجنب التحميل المزدوج
 
     setIsLoadingAllCompanies(true);
     try {
@@ -624,8 +579,10 @@ const AdvancedFeatures: React.FC = () => {
 
       console.log(`✅ Loaded ${allCompanies.length} companies into cache`);
       setAllCompaniesCache(allCompanies);
+      return allCompanies;
     } catch (e) {
       console.error('❌ Error loading all companies:', e);
+      return [];
     } finally {
       setIsLoadingAllCompanies(false);
     }
@@ -640,14 +597,16 @@ const AdvancedFeatures: React.FC = () => {
         return;
       }
 
-      // إذا لم يتم تحميل الكاش بعد، نحمله الآن
-      if (allCompaniesCache.length === 0 && !isLoadingAllCompanies) {
-        await loadAllCompanies();
+      let currentCache = allCompaniesCache;
+
+      // إذا لم يتم تحميل الكاش بعد، نحمله الآن ونستخدم النتيجة فوراً
+      if (currentCache.length === 0 && !isLoadingAllCompanies) {
+        currentCache = await loadAllCompanies() || [];
       }
 
       // البحث من الكاش المحلي (فوري)
       const term = companySearchTerm.trim().toLowerCase();
-      const filtered = allCompaniesCache.filter((c: any) => {
+      const filtered = currentCache.filter((c: any) => {
         const name = String(c?.name || '').toLowerCase();
         const city = String(c?.city || '').toLowerCase();
         const reg = String(c?.registrationNumber || '').toLowerCase();
@@ -813,14 +772,14 @@ const AdvancedFeatures: React.FC = () => {
 
   // تحميل جميع الشركات عند الدخول لتبويب مستخدمين الشركة
   useEffect(() => {
-    if (activeTab === 2 && allCompaniesCache.length === 0 && !isLoadingAllCompanies) {
+    if (activeTab === 1 && allCompaniesCache.length === 0 && !isLoadingAllCompanies) {
       loadAllCompanies();
     }
   }, [activeTab]);
 
   // تحسين البحث: تنفيذ تلقائي مع إكمال تلقائي (debounce)
   useEffect(() => {
-    if (activeTab !== 2) return;
+    if (activeTab !== 1) return;
     const term = companySearchTerm.trim();
     if (term.length < 2) {
       setCompanySearchResults([]);
@@ -844,7 +803,7 @@ const AdvancedFeatures: React.FC = () => {
 
   // بحث الموظفين بالاسم (debounce) مع جلب متدرج
   useEffect(() => {
-    if (activeTab !== 2) return;
+    if (activeTab !== 1) return;
     if (!selectedCompanyId) return;
     const term = (employeeSearchTerm || '').trim();
     if (!term) {
@@ -889,9 +848,6 @@ const AdvancedFeatures: React.FC = () => {
         }
         return allCompaniesCache;
       } else if (activeTab === 1) {
-        const result = await fetchSubscriptions({ page: 1, limit: 10000 });
-        return result.data || [];
-      } else if (activeTab === 2) {
         if (!selectedCompanyId) return [];
         let allEmps: any[] = [];
         let lastId = 0;
