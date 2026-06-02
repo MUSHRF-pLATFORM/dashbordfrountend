@@ -54,13 +54,13 @@ import {
   fetchDashboardStats,
   fetchDashboardReports,
   fetchCompanies,
-
+  fetchActivityLog,
   formatDashboardCurrency,
   formatDashboardDate,
   formatProjectStatus,
   calculatePercentage
 } from '../api';
-
+import type { ActivityLogEntry } from '../api';
 
 // CSS للـ animations
 const shimmerAnimation = `
@@ -683,6 +683,26 @@ const DashboardWithDatabase = () => {
       console.error('خطأ في التحديث:', error);
     } finally {
       setIsAutoRefreshing(false);
+    }
+  };
+
+  // تحميل سجل العمليات (مع دعم Load More)
+  const loadActivityLog = async (cursor?: number) => {
+    setActivityLoading(true);
+    setActivityLoadError(null);
+    try {
+      const result = await fetchActivityLog(cursor);
+      if (result.success) {
+        setActivityLog(prev => cursor ? [...prev, ...result.data] : result.data);
+        setActivityNextCursor(result.pagination.nextCursor);
+        setActivityHasMore(result.pagination.hasMore);
+      } else {
+        setActivityLoadError('تعذر تحميل سجل العمليات');
+      }
+    } catch (e) {
+      setActivityLoadError('خطأ في الاتصال بسجل العمليات');
+    } finally {
+      setActivityLoading(false);
     }
   };
 
@@ -1655,8 +1675,3 @@ const DashboardWithDatabase = () => {
         )}
       </Grid>
 
-    </Box>
-  );
-};
-
-export default DashboardWithDatabase;

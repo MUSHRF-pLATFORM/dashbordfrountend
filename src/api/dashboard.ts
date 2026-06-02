@@ -281,8 +281,18 @@ export const formatActivityType = (type: string): string => {
     'DELETE_USER': 'حذف مستخدم',
     'LOGIN': 'تسجيل دخول',
     'LOGOUT': 'تسجيل خروج',
+    'UPDATEImplementRquestsORCansle': 'تحديث أو إلغاء طلب تنفيذ',
+    'CREATEImplementRquests': 'إنشاء طلب تنفيذ',
+    'DELETEImplementRquests': 'حذف طلب تنفيذ',
   };
-  return typeMap[type] || type || 'عملية غير محددة';
+
+  if (typeMap[type]) return typeMap[type];
+
+  // محاولة تحسين قراءة الأسماء غير المعروفة
+  return type
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim() || 'عملية غير محددة';
 };
 
 const dashboardApi = {
